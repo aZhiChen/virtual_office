@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* Pixel art font */
+@font-face {
+  font-family: "PixelFont";
+  src: local("Courier New"), local("monospace");
+}
+
+/* Custom pixel-themed styles */
+:root {
+  --pixel-bg: #1a1a2e;
+  --pixel-surface: #16213e;
+  --pixel-primary: #0f3460;
+  --pixel-accent: #e94560;
+  --pixel-text: #eee;
+  --pixel-text-dim: #999;
+}
+
+body {
+  font-family: "Courier New", monospace;
+  background-color: var(--pixel-bg);
+  color: var(--pixel-text);
+  image-rendering: pixelated;
+}
+
+/* Pixel-style button */
+.pixel-btn {
+  font-family: "Courier New", monospace;
+  padding: 8px 16px;
+  border: 3px solid;
+  border-color: #fff #666 #666 #fff;
+  background: var(--pixel-primary);
+  color: var(--pixel-text);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.1s;
+}
+
+.pixel-btn:hover {
+  background: var(--pixel-accent);
+}
+
+.pixel-btn:active {
+  border-color: #666 #fff #fff #666;
+}
+
+/* Pixel-style input */
+.pixel-input {
+  font-family: "Courier New", monospace;
+  padding: 8px 12px;
+  border: 3px solid;
+  border-color: #666 #fff #fff #666;
+  background: #0a0a1a;
+  color: var(--pixel-text);
+  font-size: 14px;
+  outline: none;
+}
+
+.pixel-input:focus {
+  border-color: var(--pixel-accent) var(--pixel-accent) var(--pixel-accent) var(--pixel-accent);
+}
+
+/* Pixel-style panel */
+.pixel-panel {
+  border: 3px solid;
+  border-color: #fff #666 #666 #fff;
+  background: var(--pixel-surface);
+  padding: 16px;
+}

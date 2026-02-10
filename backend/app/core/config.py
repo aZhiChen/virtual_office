@@ -1,0 +1,31 @@
+from pydantic_settings import BaseSettings
+from typing import List
+
+
+class Settings(BaseSettings):
+    # Database
+    DATABASE_URL: str = "sqlite:///./virtual_office.db"
+
+    # JWT
+    SECRET_KEY: str = "change-me-to-a-random-secret-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+
+    # LLM (OpenAI-compatible)
+    LLM_BASE_URL: str = "https://api.openai.com/v1"
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-5-mini"
+    LLM_TIMEOUT_SECONDS: int = 30
+    LLM_MAX_CONTEXT_MESSAGES: int = 10
+
+    # CORS
+    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/app.log"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()
