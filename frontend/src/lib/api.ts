@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 async function apiFetch(path: string, options: RequestInit = {}) {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -70,4 +70,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ personality, test_message }),
     }),
+
+  // Chat
+  getChatHistory: (withUserId: number) =>
+    apiFetch(`/api/chat/history?with_user_id=${withUserId}`),
 };

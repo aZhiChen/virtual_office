@@ -12,14 +12,18 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
     # LLM (OpenAI-compatible)
-    LLM_BASE_URL: str = "https://api.openai.com/v1"
-    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://api.zhizengzeng.com/v1"
+    LLM_API_KEY: str = "your_key"
     LLM_MODEL: str = "gpt-5-mini"
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_CONTEXT_MESSAGES: int = 10
 
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "http://172.28.101.47:3000"
+    ]
 
     # Logging
     LOG_LEVEL: str = "INFO"

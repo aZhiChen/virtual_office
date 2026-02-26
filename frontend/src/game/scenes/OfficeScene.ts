@@ -49,6 +49,7 @@ export function createOfficeScene(Phaser: any) {
     private otherPets: Map<number, any> = new Map();
     private petLabels: Map<number, any> = new Map();
     private nameLabels: Map<number, any> = new Map();
+    private otherPlayerNames: Map<number, string> = new Map();
     private cursors!: any;
     private wallLayer!: any;
     private furnitureGroup!: any;
@@ -63,6 +64,7 @@ export function createOfficeScene(Phaser: any) {
     private sitPromptLabel: any = null;
     private workingLabel: any = null;
     private meetingRoomChairs: Map<number, any> = new Map(); // chair id -> sprite
+    private deskChairs: Map<number, any> = new Map(); // desk id -> office chair sprite (for depth)
     private lastNearbyChair: number | null = null;
     private sitPromptLabelChair: any = null;
     private currentChairId: number | null = null;
@@ -71,6 +73,7 @@ export function createOfficeScene(Phaser: any) {
     private lastNearbyDiningChair: number | null = null;
     private sitPromptLabelDiningChair: any = null;
     private currentDiningChairIndex: number | null = null;
+    private currentDeskId: number | null = null;
     private applianceLabel: any = null; // "微波炉" / "冰箱" / "储物柜" when near
     private treadmillSprites: any[] = []; // treadmill sprites from FURNITURE
     private lastNearbyTreadmill: number | null = null;
@@ -80,6 +83,21 @@ export function createOfficeScene(Phaser: any) {
     private currentTreadmillIndex: number | null = null;
     private officeAnimals: any[] = []; // 4 cows + 4 horses, random walk, collide with each other
     private officeAnimalTime = 0;
+    /** Other player at desk: user_id -> desk_id (null when stood up). */
+    private otherPlayerDesk: Map<number, number | null> = new Map();
+    /** Other player at meeting/dining/treadmill: user_id -> { type, id } (null when stood up). */
+    private otherPlayerSeat: Map<number, { type: string; id: number } | null> = new Map();
+    /** "XXX在认真工作" label above other players at desk. */
+    private otherWorkingLabels: Map<number, any> = new Map();
+    /** "XXX在努力减肥" label above other players on treadmill. */
+    private otherTreadmillLabels: Map<number, any> = new Map();
+    /** "XXX在休息" label above other players on meeting/dining chairs. */
+    private otherChairLabels: Map<number, any> = new Map();
+    /** Stored avatar_config for other players (to generate back texture on demand). */
+    private otherPlayerAvatarConfig: Map<number, any> = new Map();
+    /** "<人名>正在使用，请排队或使用其他<设备名>" above player when device is occupied. */
+    private deviceOccupiedLabel: any = null;
+    private deviceOccupiedHideAt = 0;
 
     constructor() {
       super("OfficeScene");
@@ -139,12 +157,17 @@ export function createOfficeScene(Phaser: any) {
       this.setupCamera();
       this.setupInput();
       this.setupExternalEvents();
+      // Tell the page we're ready so it can re-send presence_snapshot if we missed it (e.g. slow Phaser load).
+      // Delay so renderer/textures/framebuffer are fully ready before addOtherPlayer runs (avoids renderer null).
+      this.time.delayedCall(300, () => {
+        window.dispatchEvent(new CustomEvent("game:ready"));
+      });
     }
 
     update(_time: number, delta: number) {
       if (!this.player) return;
       this.handleMovement();
-      this.updateOfficeAnimals(delta);
+      // Office animals are driven by server (react:office_animals), not local wander
       this.checkProximity();
       this.updateLabels();
       this.updateDepths();
@@ -333,12 +356,10 @@ export function createOfficeScene(Phaser: any) {
         deskSprite.setDepth(py + TILE_SIZE * 1.4);
 
         // 2. Chair (Atomic PNG)
-        // Positioned for sitting - NO collision body, allows walking between desk and chair
         const chairSprite = this.add.image(px + TILE_SIZE * 1.5, py + TILE_SIZE * 1.9, "chair");
         chairSprite.setDisplaySize(TILE_SIZE * 1.2, TILE_SIZE * 1.5);
-        // Chair depth will be adjusted when sitting: player < chair < desk
-        // Default depth (when not sitting) - chair uses y-position based depth
         chairSprite.setDepth(py + TILE_SIZE * 1.9);
+        this.deskChairs.set(desk.id, chairSprite);
 
         // 3. Desk ID Label
         this.add
@@ -394,6 +415,28 @@ export function createOfficeScene(Phaser: any) {
 
     /* ---- y-depth sorting (called every frame) ---- */
 
+    private isOtherOnMeetingChair(chairId: number): boolean {
+      for (const [, seat] of this.otherPlayerSeat) {
+        if (seat?.type === "meeting_chair" && seat.id === chairId) return true;
+      }
+      return false;
+    }
+
+    private isOtherOnDiningChair(index: number): boolean {
+      for (const [, seat] of this.otherPlayerSeat) {
+        if (seat?.type === "dining_chair" && seat.id === index) return true;
+      }
+      return false;
+    }
+
+    private isAnyOnDiningChairTopRow(): boolean {
+      if (this.currentDiningChairIndex !== null && this.currentDiningChairIndex <= 2) return true;
+      for (const [, seat] of this.otherPlayerSeat) {
+        if (seat?.type === "dining_chair" && seat.id <= 2) return true;
+      }
+      return false;
+    }
+
     private updateDepths() {
       if (this.isSitting) {
         if (this.currentChairId !== null) {
@@ -408,7 +451,6 @@ export function createOfficeScene(Phaser: any) {
           const chairSprite = this.diningChairSprites[this.currentDiningChairIndex];
           if (chairSprite) {
             const idx = this.currentDiningChairIndex;
-            // Chair 1, 2, 4 (indices 0, 1, 2): person covers chair, desk covers person
             if (idx <= 2) {
               chairSprite.setDepth(chairSprite.y - 20);
               this.player.setDepth(chairSprite.y + 15);
@@ -416,76 +458,114 @@ export function createOfficeScene(Phaser: any) {
                 this.dinningDeskSprite.setDepth(chairSprite.y + 80);
               }
             } else {
-              // Chair 3 (index 3): chair covers person
               this.player.setDepth(chairSprite.y - 10);
               chairSprite.setDepth(chairSprite.y + 30);
             }
             return;
           }
         }
-        // Find the desk the player is at to get its base Y
-        const desk = DESKS.find(d => 
+        const desk = DESKS.find(d =>
           Math.abs(d.tileX * TILE_SIZE + TILE_SIZE * 1.5 - this.player.x) < 10 &&
           Math.abs(d.tileY * TILE_SIZE + TILE_SIZE * 1.15 - this.player.y) < 15
         );
         if (desk) {
           const py = desk.tileY * TILE_SIZE;
-          // Depth ordering when sitting: player < chair < desk
-          // Player depth: py + TILE_SIZE * 1.0 (lowest, behind chair)
-          // Chair depth: py + TILE_SIZE * 1.3 (above player)
-          // Desk depth: py + TILE_SIZE * 1.4 (highest)
-          this.player.setDepth(py + TILE_SIZE * 1.0); 
-          
-          // Update chair depth to be above player
-          const chairY = py + TILE_SIZE * 1.9;
-          this.children.list.forEach((child: any) => {
-            if (child.texture && child.texture.key === "chair" && 
-                Math.abs(child.x - (desk.tileX * TILE_SIZE + TILE_SIZE * 1.5)) < 5 &&
-                Math.abs(child.y - chairY) < 5) {
-              child.setDepth(py + TILE_SIZE * 1.3);
-            }
-          });
+          this.player.setDepth(py + TILE_SIZE * 1.0);
+          const chairSprite = this.deskChairs.get(desk.id);
+          if (chairSprite) chairSprite.setDepth(py + TILE_SIZE * 1.3);
           return;
         }
       }
-      
+
+      // Apply depths for other players at seats (so furniture ordering matches)
+      this.otherPlayerDesk.forEach((desk_id, uid) => {
+        if (desk_id == null) return;
+        const p = this.otherPlayers.get(uid);
+        const desk = DESKS.find((d) => d.id === desk_id);
+        if (!p || !desk) return;
+        const py = desk.tileY * TILE_SIZE;
+        p.setDepth(py + TILE_SIZE * 1.0);
+        const chairSprite = this.deskChairs.get(desk_id);
+        if (chairSprite) chairSprite.setDepth(py + TILE_SIZE * 1.3);
+      });
+      this.otherPlayerSeat.forEach((seat, uid) => {
+        if (!seat) return;
+        const p = this.otherPlayers.get(uid);
+        if (!p) return;
+        if (seat.type === "meeting_chair") {
+          const chairSprite = this.meetingRoomChairs.get(seat.id);
+          if (chairSprite) {
+            p.setDepth(chairSprite.y - TILE_SIZE * 0.2);
+            chairSprite.setDepth(chairSprite.y + TILE_SIZE * 0.5);
+          }
+        } else if (seat.type === "dining_chair") {
+          const chairSprite = this.diningChairSprites[seat.id];
+          if (chairSprite) {
+            const idx = seat.id;
+            if (idx <= 2) {
+              chairSprite.setDepth(chairSprite.y - 20);
+              p.setDepth(chairSprite.y + 15);
+              if (this.dinningDeskSprite) {
+                this.dinningDeskSprite.setDepth(chairSprite.y + 80);
+              }
+            } else {
+              p.setDepth(chairSprite.y - 10);
+              chairSprite.setDepth(chairSprite.y + 30);
+            }
+          }
+        }
+        // treadmill: use default depth below
+      });
+
+      // Default depth for office desk chairs not occupied by anyone (local at desk already returned above)
+      DESKS.forEach((desk) => {
+        const occupiedByOther = [...this.otherPlayerDesk.values()].some((did) => did === desk.id);
+        const chairSprite = this.deskChairs.get(desk.id);
+        if (chairSprite && !occupiedByOther) {
+          chairSprite.setDepth(desk.tileY * TILE_SIZE + TILE_SIZE * 1.9);
+        }
+      });
+
       MEETING_ROOM_CHAIRS.forEach((chair) => {
         const chairSprite = this.meetingRoomChairs.get(chair.id);
-        if (chairSprite && this.currentChairId !== chair.id) {
+        if (chairSprite && this.currentChairId !== chair.id && !this.isOtherOnMeetingChair(chair.id)) {
           chairSprite.setDepth(chairSprite.y + TILE_SIZE * 0.5);
         }
       });
-      this.diningChairSprites.forEach((chairSprite: any) => {
-        if (chairSprite && this.currentDiningChairIndex === null) {
+      this.diningChairSprites.forEach((chairSprite: any, index: number) => {
+        if (chairSprite && this.currentDiningChairIndex !== index && !this.isOtherOnDiningChair(index)) {
           chairSprite.setDepth(chairSprite.y + (chairSprite.displayHeight || 0) * 0.5);
         }
       });
-      if (this.dinningDeskSprite && this.currentDiningChairIndex === null) {
+      if (this.dinningDeskSprite && !this.isAnyOnDiningChairTopRow()) {
         this.dinningDeskSprite.setDepth(
           this.dinningDeskSprite.y + (this.dinningDeskSprite.displayHeight || 0) * 0.5
         );
       }
-      
+
       // Player – depth = bottom-edge y
       this.player.setDepth(
         this.player.y + this.player.displayHeight * 0.5,
       );
 
-      // Pet
       if (this.pet) {
         this.pet.setDepth(this.pet.y + this.pet.displayHeight * 0.5);
       }
 
-      // Office cows & horses
       this.officeAnimals.forEach((sprite) => {
         if (sprite?.body) {
           sprite.setDepth(sprite.y + (sprite.displayHeight || 0) * 0.5);
         }
       });
 
-      // Other players & pets
-      this.otherPlayers.forEach((sprite: any) => {
-        sprite.setDepth(sprite.y + sprite.displayHeight * 0.5);
+      // Other players: default depth unless already set by seat logic above
+      this.otherPlayers.forEach((sprite: any, uid: number) => {
+        const atDesk = this.otherPlayerDesk.get(uid) != null;
+        const seat = this.otherPlayerSeat.get(uid);
+        const atMeetingOrDining = seat?.type === "meeting_chair" || seat?.type === "dining_chair";
+        if (!atDesk && !atMeetingOrDining) {
+          sprite.setDepth(sprite.y + (sprite.displayHeight || 0) * 0.5);
+        }
       });
       this.otherPets.forEach((sprite: any) => {
         sprite.setDepth(sprite.y + sprite.displayHeight * 0.5);
@@ -658,8 +738,9 @@ export function createOfficeScene(Phaser: any) {
             this.standUpFromChair();
           } else if (this.currentDiningChairIndex !== null) {
             this.standUpFromDiningChair();
-          } else {
-            window.dispatchEvent(new CustomEvent("react:stand_up"));
+          } else if (this.currentDeskId !== null) {
+            // Standing up from desk - trigger via game event to send to server
+            window.dispatchEvent(new CustomEvent("game:stand_up"));
           }
         } else {
           if (this.lastNearbyTreadmill !== null) {
@@ -670,7 +751,7 @@ export function createOfficeScene(Phaser: any) {
             this.sitOnDiningChair(this.lastNearbyDiningChair);
           } else if (this.lastNearbyDesks.length > 0) {
             window.dispatchEvent(
-              new CustomEvent("react:sit_at_desk", { detail: { desk_id: this.lastNearbyDesks[0] } })
+              new CustomEvent("game:sit_at_desk", { detail: { desk_id: this.lastNearbyDesks[0] } })
             );
           }
         }
@@ -698,8 +779,8 @@ export function createOfficeScene(Phaser: any) {
         }
       }
 
-      // If sitting on a chair and trying to move, stand up
-      if (this.isSitting && (this.currentChairId !== null || this.currentDiningChairIndex !== null)) {
+      // If sitting on a chair/desk and trying to move, stand up
+      if (this.isSitting && (this.currentChairId !== null || this.currentDiningChairIndex !== null || this.currentDeskId !== null)) {
         let vx = 0;
         let vy = 0;
         if (this.cursors.left.isDown) vx = -this.moveSpeed;
@@ -709,6 +790,7 @@ export function createOfficeScene(Phaser: any) {
         if (vx !== 0 || vy !== 0) {
           if (this.currentChairId !== null) this.standUpFromChair();
           else if (this.currentDiningChairIndex !== null) this.standUpFromDiningChair();
+          else if (this.currentDeskId !== null) window.dispatchEvent(new CustomEvent("game:stand_up"));
         } else {
           return;
         }
@@ -766,6 +848,18 @@ export function createOfficeScene(Phaser: any) {
           }
         }
         sprite.setVelocity(sprite.wanderVx ?? 0, sprite.wanderVy ?? 0);
+      }
+    }
+
+    /** Apply server-authoritative positions/velocities to office animals (cows/horses). */
+    private applyOfficeAnimalsFromServer(animals: Array<{ index: number; x: number; y: number; vx?: number; vy?: number }> | undefined) {
+      if (!animals?.length) return;
+      for (const a of animals) {
+        const sprite = this.officeAnimals[a.index];
+        if (sprite?.body) {
+          sprite.setPosition(a.x, a.y);
+          (sprite.body as Phaser.Physics.Arcade.Body).setVelocity(a.vx ?? 0, a.vy ?? 0);
+        }
       }
     }
 
@@ -840,8 +934,9 @@ export function createOfficeScene(Phaser: any) {
       if (nearbyChair !== this.lastNearbyChair) {
         this.lastNearbyChair = nearbyChair;
         
-        // Show/hide sit prompt for chairs
-        if (nearbyChair !== null && !this.isSitting) {
+        // Show/hide sit prompt for chairs (hide when chair is occupied by another player)
+        const chairOccupiedByOther = nearbyChair !== null && this.isOtherOnMeetingChair(nearbyChair);
+        if (nearbyChair !== null && !this.isSitting && !chairOccupiedByOther) {
           const chairSprite = this.meetingRoomChairs.get(nearbyChair);
           if (chairSprite) {
             if (!this.sitPromptLabelChair) {
@@ -926,7 +1021,9 @@ export function createOfficeScene(Phaser: any) {
       });
       if (nearbyDiningChair !== this.lastNearbyDiningChair) {
         this.lastNearbyDiningChair = nearbyDiningChair;
-        if (nearbyDiningChair !== null && !this.isSitting) {
+        const diningChairOccupiedByOther =
+          nearbyDiningChair !== null && this.isOtherOnDiningChair(nearbyDiningChair);
+        if (nearbyDiningChair !== null && !this.isSitting && !diningChairOccupiedByOther) {
           const chairSprite = this.diningChairSprites[nearbyDiningChair];
           if (chairSprite) {
             if (!this.sitPromptLabelDiningChair) {
@@ -1023,6 +1120,7 @@ export function createOfficeScene(Phaser: any) {
     private sitOnChair(chairId: number) {
       const chair = MEETING_ROOM_CHAIRS.find(c => c.id === chairId);
       if (!chair) return;
+      if (this.isOtherOnMeetingChair(chairId)) return;
 
       const chairSprite = this.meetingRoomChairs.get(chairId);
       if (!chairSprite) return;
@@ -1035,6 +1133,8 @@ export function createOfficeScene(Phaser: any) {
 
       // Switch to back view texture (no eyes)
       this.player.setTexture("player_self_back");
+
+      window.dispatchEvent(new CustomEvent("game:seat", { detail: { seat_type: "meeting_chair", seat_id: chairId } }));
 
       // Hide sit prompt
       if (this.sitPromptLabelChair) {
@@ -1054,6 +1154,7 @@ export function createOfficeScene(Phaser: any) {
       this.currentChairId = null;
 
       this.player.setTexture("player_self");
+      window.dispatchEvent(new CustomEvent("game:stand_up"));
 
       if (this.lastNearbyChair !== null && this.sitPromptLabelChair) {
         const chairSprite = this.meetingRoomChairs.get(this.lastNearbyChair);
@@ -1065,6 +1166,7 @@ export function createOfficeScene(Phaser: any) {
     }
 
     private sitOnDiningChair(index: number) {
+      if (this.isOtherOnDiningChair(index)) return;
       const chairSprite = this.diningChairSprites[index];
       if (!chairSprite) return;
 
@@ -1076,6 +1178,8 @@ export function createOfficeScene(Phaser: any) {
       this.currentDiningChairIndex = index;
       this.player.setTexture("player_self_back");
 
+      window.dispatchEvent(new CustomEvent("game:seat", { detail: { seat_type: "dining_chair", seat_id: index } }));
+
       if (this.sitPromptLabelDiningChair) this.sitPromptLabelDiningChair.setVisible(false);
       if (this.workingLabel) this.workingLabel.setVisible(false);
     }
@@ -1086,6 +1190,7 @@ export function createOfficeScene(Phaser: any) {
       this.isSitting = false;
       this.currentDiningChairIndex = null;
       this.player.setTexture("player_self");
+      window.dispatchEvent(new CustomEvent("game:stand_up"));
 
       if (this.lastNearbyDiningChair !== null && this.sitPromptLabelDiningChair) {
         const chairSprite = this.diningChairSprites[this.lastNearbyDiningChair];
@@ -1106,6 +1211,8 @@ export function createOfficeScene(Phaser: any) {
       this.player.setVelocity(0, 0);
       this.isOnTreadmill = true;
       this.currentTreadmillIndex = index;
+
+      window.dispatchEvent(new CustomEvent("game:seat", { detail: { seat_type: "treadmill", seat_id: index } }));
 
       if (this.treadmillPromptLabel) this.treadmillPromptLabel.setVisible(false);
       // Show "<人名>在努力减肥" above player
@@ -1139,6 +1246,7 @@ export function createOfficeScene(Phaser: any) {
 
       this.isOnTreadmill = false;
       this.currentTreadmillIndex = null;
+      window.dispatchEvent(new CustomEvent("game:stand_up"));
 
       if (this.treadmillStatusLabel) this.treadmillStatusLabel.setVisible(false);
 
@@ -1175,6 +1283,27 @@ export function createOfficeScene(Phaser: any) {
         const sprite = this.otherPlayers.get(uid);
         if (sprite) label.setPosition(sprite.x, sprite.y - 28);
       });
+      this.otherWorkingLabels.forEach((label: any, uid: number) => {
+        if (!label.visible) return;
+        const sprite = this.otherPlayers.get(uid);
+        if (sprite) label.setPosition(sprite.x, sprite.y - 35);
+      });
+      this.otherTreadmillLabels.forEach((label: any, uid: number) => {
+        if (!label.visible) return;
+        const sprite = this.otherPlayers.get(uid);
+        if (sprite) label.setPosition(sprite.x, sprite.y - 35);
+      });
+      this.otherChairLabels.forEach((label: any, uid: number) => {
+        if (!label.visible) return;
+        const sprite = this.otherPlayers.get(uid);
+        if (sprite) label.setPosition(sprite.x, sprite.y - 35);
+      });
+      if (this.deviceOccupiedLabel?.visible) {
+        this.deviceOccupiedLabel.setPosition(this.player.x, this.player.y - 48);
+        if (this.time.now >= this.deviceOccupiedHideAt) {
+          this.deviceOccupiedLabel.setVisible(false);
+        }
+      }
       this.petLabels.forEach((label: any, uid: number) => {
         const pet = this.otherPets.get(uid);
         if (pet) label.setPosition(pet.x, pet.y - OfficeScene.PET_DISPLAY * 0.6);
@@ -1205,10 +1334,18 @@ export function createOfficeScene(Phaser: any) {
         const { user_id, target, position } = e.detail;
         if (target === "pet") {
           const pet = this.otherPets.get(user_id);
-          if (pet) pet.setPosition(position.x, position.y);
+          if (pet) {
+            pet.setPosition(position.x, position.y);
+            (pet.body as Phaser.Physics.Arcade.Body)?.setVelocity(0, 0);
+          }
         } else {
+          // Don't move character if they're at a desk or in a seat (desk/chair/treadmill)
+          if (this.otherPlayerDesk.get(user_id) != null || this.otherPlayerSeat.get(user_id) != null) return;
           const p = this.otherPlayers.get(user_id);
-          if (p) p.setPosition(position.x, position.y);
+          if (p) {
+            p.setPosition(position.x, position.y);
+            (p.body as Phaser.Physics.Arcade.Body)?.setVelocity(0, 0);
+          }
         }
       }) as EventListener);
 
@@ -1221,6 +1358,7 @@ export function createOfficeScene(Phaser: any) {
           this.player.setPosition(px, py);
           this.player.setVelocity(0, 0);
           this.isSitting = true;
+          this.currentDeskId = e.detail.desk_id;
           // Switch to back view texture (no eyes)
           this.player.setTexture("player_self_back");
           // Hide sit prompt
@@ -1250,6 +1388,7 @@ export function createOfficeScene(Phaser: any) {
 
       window.addEventListener("react:stand_up", (() => {
         this.isSitting = false;
+        this.currentDeskId = null;
         // Switch back to front view texture
         this.player.setTexture("player_self");
         // Hide working label
@@ -1268,6 +1407,62 @@ export function createOfficeScene(Phaser: any) {
         }
       }) as EventListener);
 
+      window.addEventListener("react:seat_state", ((e: CustomEvent) => {
+        const { user_id, action, seat_type, seat_id } = e.detail;
+        if (user_id === this.playerConfig.id) return;
+        const seat = action === "sit" ? { type: seat_type, id: seat_id } : null;
+        
+        // If another player just sat on the seat we're optimistically sitting on, stand up
+        if (seat && seat.type === "meeting_chair" && this.currentChairId === seat.id) {
+          this.standUpFromChair();
+        } else if (seat && seat.type === "dining_chair" && this.currentDiningChairIndex === seat.id) {
+          this.standUpFromDiningChair();
+        } else if (seat && seat.type === "desk" && this.currentDeskId === seat.id) {
+          // Someone else just sat at the desk we're at, stand up
+          window.dispatchEvent(new CustomEvent("react:stand_up"));
+        }
+        
+        // Update desk tracking for depth management (still needed for desk-specific depth logic)
+        if (seat && seat.type === "desk") {
+          this.otherPlayerDesk.set(user_id, seat.id);
+        } else {
+          this.otherPlayerDesk.set(user_id, null);
+        }
+        
+        this.applyOtherPlayerSeat(user_id, seat);
+      }) as EventListener);
+
+      window.addEventListener("react:device_occupied", ((e: CustomEvent) => {
+        const { device_type, device_id, occupant_name, device_name } = e.detail;
+        if (device_type === "desk" && this.currentDeskId === device_id) {
+          window.dispatchEvent(new CustomEvent("react:stand_up"));
+        } else if (device_type === "meeting_chair" && this.currentChairId === device_id) {
+          this.standUpFromChair();
+        } else if (device_type === "dining_chair" && this.currentDiningChairIndex === device_id) {
+          this.standUpFromDiningChair();
+        } else if (device_type === "treadmill" && this.currentTreadmillIndex === device_id) {
+          this.standOffTreadmill();
+        }
+        const msg = `${occupant_name || "有人"}正在使用，\n请排队或使用其他${device_name || "设备"}`;
+        if (!this.deviceOccupiedLabel) {
+          this.deviceOccupiedLabel = this.add
+            .text(this.player.x, this.player.y - 48, msg, {
+              fontSize: "20px",
+              color: "#fff",
+              backgroundColor: "#b45309cc",
+              padding: { x: 8, y: 8 },
+              fontFamily: "monospace",
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH);
+        } else {
+          this.deviceOccupiedLabel.setText(msg);
+          this.deviceOccupiedLabel.setPosition(this.player.x, this.player.y - 48);
+        }
+        this.deviceOccupiedLabel.setVisible(true);
+        this.deviceOccupiedHideAt = this.time.now + 4000;
+      }) as EventListener);
+
       window.addEventListener("react:presence_snapshot", ((e: CustomEvent) => {
         const users = e.detail.users || {};
         Object.keys(users).forEach((uid) => {
@@ -1278,11 +1473,22 @@ export function createOfficeScene(Phaser: any) {
             position: u.position,
             pet_position: u.pet_position,
           });
+          if (u.seat) this.applyOtherPlayerSeat(parseInt(uid), u.seat);
         });
+        this.applyOfficeAnimalsFromServer(e.detail.animals);
       }) as EventListener);
 
-      window.addEventListener("react:afk_changed", (() => {
-        // Visual indicator could be added here
+      window.addEventListener("react:office_animals", ((e: CustomEvent) => {
+        this.applyOfficeAnimalsFromServer(e.detail?.animals);
+      }) as EventListener);
+
+      window.addEventListener("react:afk_changed", ((e: CustomEvent) => {
+        const { user_id, is_afk } = e.detail;
+        const label = this.nameLabels.get(user_id);
+        if (!label) return;
+        const baseName = this.otherPlayerNames.get(user_id) || `User ${user_id}`;
+        label.setText(is_afk ? `${baseName} [AFK]` : baseName);
+        label.setColor(is_afk ? "#ffa" : "#fff");
       }) as EventListener);
     }
 
@@ -1291,24 +1497,35 @@ export function createOfficeScene(Phaser: any) {
     private addOtherPlayer(data: any) {
       const uid = data.user_id;
       if (this.otherPlayers.has(uid)) return;
+      
+      // Ensure scene is fully initialized with renderer and WebGL context ready
+      if (!this.textures || !this.textures.game || !this.textures.game.renderer || !this.sys.game.renderer) {
+        console.warn(`Scene not ready, deferring player addition for user ${uid}`);
+        this.time.delayedCall(100, () => this.addOtherPlayer(data));
+        return;
+      }
 
       const cfg = data.profile?.avatar_config || {};
+      this.otherPlayerAvatarConfig.set(uid, cfg);
       const texKey = `player_${uid}`;
       this.generateCharacterTexture(texKey, cfg);
+      this.generateCharacterBackTexture(`${texKey}_back`, cfg);
 
       const pos = data.position || { x: 400, y: 300 };
       const sprite = this.physics.add.sprite(pos.x, pos.y, texKey);
       sprite.setDisplaySize(28, 42);
       sprite.setDepth(pos.y + 21);
+      (sprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
       this.otherPlayers.set(uid, sprite);
       // Other player vs office animals (cows/horses)
       this.officeAnimals.forEach((animal) => {
         this.physics.add.collider(animal, sprite);
       });
 
-      // Name label
+      // Name label (store base name for later AFK updates)
       const name =
         data.profile?.display_name || data.profile?.username || `User ${uid}`;
+      this.otherPlayerNames.set(uid, name);
       const afk = data.profile?.is_afk;
       const label = this.add
         .text(pos.x, pos.y - 28, afk ? `${name} [AFK]` : name, {
@@ -1339,6 +1556,7 @@ export function createOfficeScene(Phaser: any) {
         );
         petSprite.setDisplaySize(OfficeScene.PET_DISPLAY, OfficeScene.PET_DISPLAY);
         petSprite.setDepth(data.pet_position.y + OfficeScene.PET_DISPLAY * 0.5);
+        (petSprite.body as Phaser.Physics.Arcade.Body).setImmovable(true);
         this.otherPets.set(uid, petSprite);
         // Pet label: "<人名>的<宠物类型（无后缀）>"
         const ownerName =
@@ -1367,6 +1585,141 @@ export function createOfficeScene(Phaser: any) {
       }
     }
 
+    private hideOtherStatusLabels(user_id: number) {
+      const w = this.otherWorkingLabels.get(user_id);
+      if (w) w.setVisible(false);
+      const t = this.otherTreadmillLabels.get(user_id);
+      if (t) t.setVisible(false);
+      const c = this.otherChairLabels.get(user_id);
+      if (c) c.setVisible(false);
+    }
+
+    /** Apply seat state for another player (desk is handled by react:desk_state). */
+    private applyOtherPlayerSeat(
+      user_id: number,
+      seat: { type: string; id: number } | null,
+    ) {
+      const p = this.otherPlayers.get(user_id);
+      if (!p) return;
+      const texKey = `player_${user_id}`;
+      const name = this.otherPlayerNames.get(user_id) || `User ${user_id}`;
+      this.otherPlayerSeat.set(user_id, seat);
+      this.hideOtherStatusLabels(user_id);
+      if (!seat) {
+        if (this.textures.exists(texKey)) p.setTexture(texKey);
+        return;
+      }
+      let x = 0;
+      let y = 0;
+      if (seat.type === "desk") {
+        const desk = DESKS.find((d) => d.id === seat.id);
+        if (!desk) return;
+        x = desk.tileX * TILE_SIZE + TILE_SIZE * 1.5;
+        y = desk.tileY * TILE_SIZE + TILE_SIZE * 1.15;
+        // Show "XXX在认真工作" label for other players at desk
+        let workLab = this.otherWorkingLabels.get(user_id);
+        if (!workLab) {
+          workLab = this.add
+            .text(x, y - 35, `${name}在认真工作`, {
+              fontSize: "11px",
+              color: "#fff",
+              backgroundColor: "#000000aa",
+              padding: { x: 6, y: 3 },
+              fontFamily: "monospace",
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH + 1);
+          this.otherWorkingLabels.set(user_id, workLab);
+        } else {
+          workLab.setText(`${name}在认真工作`);
+          workLab.setPosition(x, y - 35);
+        }
+        workLab.setVisible(true);
+      } else if (seat.type === "meeting_chair") {
+        const chairSprite = this.meetingRoomChairs.get(seat.id);
+        if (!chairSprite) return;
+        x = chairSprite.x;
+        y = chairSprite.y;
+        // Show "XXX在休息" label for other players (visible on all clients)
+        let chairLab = this.otherChairLabels.get(user_id);
+        if (!chairLab) {
+          chairLab = this.add
+            .text(x, y - 35, `${name}在开会`, {
+              fontSize: "11px",
+              color: "#fff",
+              backgroundColor: "#000000aa",
+              padding: { x: 6, y: 3 },
+              fontFamily: "monospace",
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH);
+          this.otherChairLabels.set(user_id, chairLab);
+        } else {
+          chairLab.setText(`${name}在开会`);
+          chairLab.setPosition(x, y - 35);
+        }
+        chairLab.setVisible(true);
+      } else if (seat.type === "dining_chair") {
+        const chairSprite = this.diningChairSprites[seat.id];
+        if (!chairSprite) return;
+        x = chairSprite.x;
+        y = seat.id === 3 ? chairSprite.y - 12 : chairSprite.y;
+        // Show "XXX在休息" label for other players (visible on all clients)
+        let chairLab = this.otherChairLabels.get(user_id);
+        if (!chairLab) {
+          chairLab = this.add
+            .text(x, y - 35, `${name}在休息`, {
+              fontSize: "11px",
+              color: "#fff",
+              backgroundColor: "#000000aa",
+              padding: { x: 6, y: 3 },
+              fontFamily: "monospace",
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH);
+          this.otherChairLabels.set(user_id, chairLab);
+        } else {
+          chairLab.setText(`${name}在休息`);
+          chairLab.setPosition(x, y - 35);
+        }
+        chairLab.setVisible(true);
+      } else if (seat.type === "treadmill") {
+        const treadmillSprite = this.treadmillSprites[seat.id];
+        if (!treadmillSprite) return;
+        x = treadmillSprite.x + TILE_SIZE * 0.4;
+        y = treadmillSprite.y;
+        let lab = this.otherTreadmillLabels.get(user_id);
+        if (!lab) {
+          lab = this.add
+            .text(x, y - 35, `${name}在努力减肥`, {
+              fontSize: "11px",
+              color: "#fff",
+              backgroundColor: "#000000aa",
+              padding: { x: 6, y: 3 },
+              fontFamily: "monospace",
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH);
+          this.otherTreadmillLabels.set(user_id, lab);
+        } else {
+          lab.setText(`${name}在努力减肥`);
+          lab.setPosition(x, y - 35);
+        }
+        lab.setVisible(true);
+      } else {
+        return;
+      }
+      p.setPosition(x, y);
+      (p.body as Phaser.Physics.Arcade.Body)?.setVelocity(0, 0);
+      // Ensure back texture exists (for sitting pose on all clients)
+      const backKey = `${texKey}_back`;
+      if (!this.textures.exists(backKey)) {
+        const cfg = this.otherPlayerAvatarConfig.get(user_id) || {};
+        this.generateCharacterBackTexture(backKey, cfg);
+      }
+      if (this.textures.exists(backKey)) p.setTexture(backKey);
+    }
+
     private removeOtherPlayer(uid: number) {
       const sprite = this.otherPlayers.get(uid);
       if (sprite) {
@@ -1378,6 +1731,25 @@ export function createOfficeScene(Phaser: any) {
         label.destroy();
         this.nameLabels.delete(uid);
       }
+      this.otherPlayerNames.delete(uid);
+      this.otherPlayerDesk.delete(uid);
+      this.otherPlayerSeat.delete(uid);
+      const wLab = this.otherWorkingLabels.get(uid);
+      if (wLab) {
+        wLab.destroy();
+        this.otherWorkingLabels.delete(uid);
+      }
+      const tLab = this.otherTreadmillLabels.get(uid);
+      if (tLab) {
+        tLab.destroy();
+        this.otherTreadmillLabels.delete(uid);
+      }
+      const cLab = this.otherChairLabels.get(uid);
+      if (cLab) {
+        cLab.destroy();
+        this.otherChairLabels.delete(uid);
+      }
+      this.otherPlayerAvatarConfig.delete(uid);
       const pet = this.otherPets.get(uid);
       if (pet) {
         pet.destroy();
@@ -1394,6 +1766,12 @@ export function createOfficeScene(Phaser: any) {
 
     private generateCharacterTexture(key: string, cfg: any) {
       if (this.textures.exists(key)) return;
+      
+      // Ensure renderer is ready before generating textures
+      if (!this.textures || !this.textures.game || !this.textures.game.renderer || !this.sys.game.renderer) {
+        console.warn(`Renderer not ready for texture generation: ${key}`);
+        return;
+      }
 
       const canvas = document.createElement("canvas");
       canvas.width = 16;
@@ -1473,6 +1851,12 @@ export function createOfficeScene(Phaser: any) {
 
     private generateCharacterBackTexture(key: string, cfg: any) {
       if (this.textures.exists(key)) return;
+      
+      // Ensure renderer is ready before generating textures
+      if (!this.textures || !this.textures.game || !this.textures.game.renderer || !this.sys.game.renderer) {
+        console.warn(`Renderer not ready for back texture generation: ${key}`);
+        return;
+      }
 
       const canvas = document.createElement("canvas");
       canvas.width = 16;
@@ -1548,6 +1932,12 @@ export function createOfficeScene(Phaser: any) {
     private generatePetTexture(key: string, petType: string) {
       if (this.textures.exists(key)) return;
       if (OfficeScene.IMAGE_PET_TYPES.includes(petType)) return; // use preloaded image texture
+      
+      // Ensure renderer is ready before generating textures
+      if (!this.textures || !this.textures.game || !this.textures.game.renderer || !this.sys.game.renderer) {
+        console.warn(`Renderer not ready for pet texture generation: ${key}`);
+        return;
+      }
 
       const canvas = document.createElement("canvas");
       canvas.width = 16;

@@ -49,4 +49,4 @@ async def generate_afk_reply(
         return reply
     except Exception as e:
         logger.exception("LLM auto-reply failed")
-        return f"[Auto-reply unavailable: {str(e)[:80]}]"
+        return f"[Auto-reply unavailable: {str(e)[:300]}]"

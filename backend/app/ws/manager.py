@@ -1,6 +1,8 @@
 from fastapi import WebSocket
 from typing import Dict
 
+from app.ws.office_animals import office_animals_state
+
 
 class ConnectionManager:
     """Manages WebSocket connections and world state."""
@@ -10,6 +12,10 @@ class ConnectionManager:
         self.user_positions: Dict[int, dict] = {}  # user_id -> {x, y}
         self.pet_positions: Dict[int, dict] = {}  # user_id -> {x, y}
         self.desk_occupants: Dict[int, int] = {}  # desk_id -> user_id
+        self.user_seats: Dict[int, dict] = {}  # user_id -> {"type": "meeting_chair"|"dining_chair"|"treadmill", "id": int} or absent
+        self.meeting_chair_occupants: Dict[int, int] = {}  # chair_id -> user_id
+        self.dining_chair_occupants: Dict[int, int] = {}  # index -> user_id
+        self.treadmill_occupants: Dict[int, int] = {}  # index -> user_id
         self.user_profiles: Dict[int, dict] = {}  # user_id -> profile dict
         self.control_targets: Dict[int, str] = {}  # user_id -> "character"|"pet"
 
@@ -44,13 +50,14 @@ class ConnectionManager:
                     "profile": self.user_profiles.get(uid, {}),
                     "position": self.user_positions.get(uid, {"x": 400, "y": 300}),
                     "pet_position": self.pet_positions.get(uid),
+                    "seat": self.user_seats.get(uid),
                 }
 
         await self.send_personal(
             {
                 "type": "presence_snapshot",
                 "users": users_snapshot,
-                "desks": {str(k): v for k, v in self.desk_occupants.items()},
+                "animals": office_animals_state.snapshot(),
             },
             user_id,
         )
@@ -65,6 +72,16 @@ class ConnectionManager:
         for desk_id, uid in list(self.desk_occupants.items()):
             if uid == user_id:
                 del self.desk_occupants[desk_id]
+        self.user_seats.pop(user_id, None)
+        for chair_id, uid in list(self.meeting_chair_occupants.items()):
+            if uid == user_id:
+                del self.meeting_chair_occupants[chair_id]
+        for idx, uid in list(self.dining_chair_occupants.items()):
+            if uid == user_id:
+                del self.dining_chair_occupants[idx]
+        for idx, uid in list(self.treadmill_occupants.items()):
+            if uid == user_id:
+                del self.treadmill_occupants[idx]
 
     async def broadcast(self, message: dict, exclude: int = None):
         for user_id, ws in list(self.active_connections.items()):

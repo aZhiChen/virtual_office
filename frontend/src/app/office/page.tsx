@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { getWSClient, destroyWSClient } from "@/lib/ws";
 import ChatPanel, { ChatMessage } from "@/components/ChatPanel";
 import ControlToggle from "@/components/ControlToggle";
+import MessageNotification, { Notification } from "@/components/MessageNotification";
 
 // Dynamically import PhaserGame so it only loads client-side
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
@@ -41,7 +42,25 @@ export default function OfficePage() {
   const [onlineUsers, setOnlineUsers] = useState<Record<string, any>>({});
   const [chatTarget, setChatTarget] = useState<{ id: number; name: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatHistoryCache, setChatHistoryCache] = useState<Record<number, ChatMessage[]>>({});
+  const [notification, setNotification] = useState<Notification | null>(null);
   const wsRef = useRef<ReturnType<typeof getWSClient> | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
+  const chatTargetRef = useRef<{ id: number; name: string } | null>(null);
+  const onlineUsersRef = useRef<Record<string, any>>({});
+  const presenceSnapshotRef = useRef<{ users: Record<string, any>; desks?: Record<string, number>; animals?: any[] }>({ users: {} });
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    chatTargetRef.current = chatTarget;
+  }, [chatTarget]);
+
+  useEffect(() => {
+    onlineUsersRef.current = onlineUsers;
+  }, [onlineUsers]);
 
   // Load profile
   useEffect(() => {
@@ -68,8 +87,10 @@ export default function OfficePage() {
     wsRef.current = ws;
 
     ws.on("presence_snapshot", (data: any) => {
+      presenceSnapshotRef.current = { users: data.users || {}, desks: data.desks, animals: data.animals };
       setOnlineUsers(data.users || {});
-      window.dispatchEvent(new CustomEvent("react:presence_snapshot", { detail: data }));
+      // Trigger check to see if game is ready and dispatch if so
+      window.dispatchEvent(new CustomEvent("presence:check"));
     });
 
     ws.on("user_joined", (data: any) => {
@@ -94,17 +115,68 @@ export default function OfficePage() {
     });
 
     ws.on("chat_message", (data: ChatMessage) => {
-      setChatMessages((prev) => [...prev, data]);
-    });
-
-    ws.on("desk_state", (data: any) => {
-      if (data.user_id === profile.id && data.action === "sit") {
-        setIsSitting(true);
+      console.log("📨 Received chat_message:", data);
+      setChatMessages((prev) => {
+        const updated = [...prev, data];
+        console.log("💬 Updated chatMessages:", updated);
+        return updated;
+      });
+      
+      // Show notification if message is for current user and chat window is not open
+      const currentProfile = profileRef.current;
+      const currentChatTarget = chatTargetRef.current;
+      
+      if (currentProfile && data.to_user_id === currentProfile.id && data.from_user_id !== currentProfile.id) {
+        // Only show notification if chat with sender is not currently open
+        if (!currentChatTarget || currentChatTarget.id !== data.from_user_id) {
+          console.log("🔔 Showing notification for message from:", data.from_username);
+          setNotification({
+            id: `${data.from_user_id}-${Date.now()}`,
+            fromUserId: data.from_user_id,
+            fromUsername: data.from_username,
+          });
+        }
       }
     });
 
+    ws.on("device_occupied", (data: any) => {
+      window.dispatchEvent(new CustomEvent("react:device_occupied", { detail: data }));
+    });
+
     ws.on("afk_changed", (data: any) => {
+      const { user_id, is_afk } = data;
+      setOnlineUsers((prev) => {
+        const key = String(user_id);
+        if (!(key in prev)) return prev;
+        return {
+          ...prev,
+          [key]: {
+            ...prev[key],
+            profile: { ...prev[key].profile, is_afk },
+          },
+        };
+      });
       window.dispatchEvent(new CustomEvent("react:afk_changed", { detail: data }));
+    });
+
+    ws.on("office_animals", (data: any) => {
+      window.dispatchEvent(new CustomEvent("react:office_animals", { detail: data }));
+    });
+
+    ws.on("seat_state", (data: any) => {
+      // Handle sitting state updates from server
+      if (data.user_id === profile.id && data.action === "sit") {
+        setIsSitting(true);
+        // For desk type, trigger local rendering
+        if (data.seat_type === "desk") {
+          window.dispatchEvent(new CustomEvent("react:sit_at_desk", { detail: { desk_id: data.seat_id } }));
+        }
+      }
+      if (data.user_id === profile.id && data.action === "stand") {
+        setIsSitting(false);
+        window.dispatchEvent(new CustomEvent("react:stand_up"));
+      }
+      window.dispatchEvent(new CustomEvent("react:seat_state", { detail: data }));
     });
 
     ws.connect();
@@ -113,6 +185,41 @@ export default function OfficePage() {
       destroyWSClient();
     };
   }, [profile]);
+
+  // When game scene is ready, send presence snapshot (users + animals) so it can show everyone
+  useEffect(() => {
+    let gameReady = false;
+    const onGameReady = () => {
+      gameReady = true;
+      const snap = presenceSnapshotRef.current;
+      if (Object.keys(snap.users).length > 0) {
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("react:presence_snapshot", { detail: snap }),
+          );
+        }, 0);
+      }
+    };
+    window.addEventListener("game:ready", onGameReady);
+    
+    // If presence_snapshot arrives after game:ready, dispatch it immediately
+    const checkAndDispatch = () => {
+      if (gameReady) {
+        const snap = presenceSnapshotRef.current;
+        if (Object.keys(snap.users).length > 0) {
+          window.dispatchEvent(
+            new CustomEvent("react:presence_snapshot", { detail: snap }),
+          );
+        }
+      }
+    };
+    window.addEventListener("presence:check", checkAndDispatch);
+    
+    return () => {
+      window.removeEventListener("game:ready", onGameReady);
+      window.removeEventListener("presence:check", checkAndDispatch);
+    };
+  }, []);
 
   // Game event listeners
   useEffect(() => {
@@ -134,14 +241,38 @@ export default function OfficePage() {
       setNearbyUsers((e as CustomEvent).detail);
     };
 
+    const handleSeat = (e: Event) => {
+      const { seat_type, seat_id } = (e as CustomEvent).detail;
+      if (seat_type === "meeting_chair") wsRef.current?.send({ type: "sit_meeting_chair", chair_id: seat_id });
+      else if (seat_type === "dining_chair") wsRef.current?.send({ type: "sit_dining_chair", index: seat_id });
+      else if (seat_type === "treadmill") wsRef.current?.send({ type: "on_treadmill", index: seat_id });
+    };
+
+    const handleGameStandUp = () => {
+      wsRef.current?.send({ type: "stand_up" });
+      window.dispatchEvent(new CustomEvent("react:stand_up"));
+      setIsSitting(false);
+    };
+
+    const handleSitAtDesk = (e: Event) => {
+      const { desk_id } = (e as CustomEvent).detail;
+      wsRef.current?.send({ type: "sit_at_desk", desk_id });
+    };
+
     window.addEventListener("game:player_moved", handlePlayerMoved);
     window.addEventListener("game:nearby_desks", handleNearbyDesks);
     window.addEventListener("game:nearby_users", handleNearbyUsers);
+    window.addEventListener("game:seat", handleSeat);
+    window.addEventListener("game:stand_up", handleGameStandUp);
+    window.addEventListener("game:sit_at_desk", handleSitAtDesk);
 
     return () => {
       window.removeEventListener("game:player_moved", handlePlayerMoved);
       window.removeEventListener("game:nearby_desks", handleNearbyDesks);
       window.removeEventListener("game:nearby_users", handleNearbyUsers);
+      window.removeEventListener("game:seat", handleSeat);
+      window.removeEventListener("game:stand_up", handleGameStandUp);
+      window.removeEventListener("game:sit_at_desk", handleSitAtDesk);
     };
   }, []);
 
@@ -160,14 +291,10 @@ export default function OfficePage() {
     api.updateAfk(next).catch(() => {});
   }, [isAfk]);
 
-  const sitAtDesk = useCallback(
-    (deskId: number) => {
-      wsRef.current?.send({ type: "sit_at_desk", desk_id: deskId });
-      window.dispatchEvent(new CustomEvent("react:sit_at_desk", { detail: { desk_id: deskId } }));
-      setIsSitting(true);
-    },
-    []
-  );
+  const sitAtDesk = useCallback((deskId: number) => {
+    wsRef.current?.send({ type: "sit_at_desk", desk_id: deskId });
+    // Wait for desk_state from server before updating UI (avoids flash when desk is occupied)
+  }, []);
 
   const standUp = useCallback(() => {
     wsRef.current?.send({ type: "stand_up" });
@@ -180,6 +307,11 @@ export default function OfficePage() {
       const u = onlineUsers[userId];
       const name = u?.profile?.display_name || u?.profile?.username || `User ${userId}`;
       setChatTarget({ id: userId, name });
+      api.getChatHistory(userId).then((history: ChatMessage[]) => {
+        setChatHistoryCache((prev) => ({ ...prev, [userId]: history }));
+      }).catch(() => {
+        setChatHistoryCache((prev) => ({ ...prev, [userId]: [] }));
+      });
     },
     [onlineUsers]
   );
@@ -294,16 +426,36 @@ export default function OfficePage() {
               targetUserId={chatTarget.id}
               targetUsername={chatTarget.name}
               myUserId={profile.id}
-              messages={chatMessages.filter(
-                (m) =>
-                  (m.from_user_id === chatTarget.id && m.to_user_id === profile.id) ||
-                  (m.from_user_id === profile.id && m.to_user_id === chatTarget.id)
-              )}
+              messages={(() => {
+                const history = chatHistoryCache[chatTarget.id] ?? [];
+                const live = chatMessages.filter(
+                  (m) =>
+                    (m.from_user_id === chatTarget.id && m.to_user_id === profile.id) ||
+                    (m.from_user_id === profile.id && m.to_user_id === chatTarget.id)
+                );
+                const seen = new Set(
+                  history.map((m) => `${m.from_user_id}-${m.to_user_id}-${m.message}`)
+                );
+                const newFromLive = live.filter(
+                  (m) => !seen.has(`${m.from_user_id}-${m.to_user_id}-${m.message}`)
+                );
+                return [...history, ...newFromLive];
+              })()}
               onSend={sendChat}
               onClose={() => setChatTarget(null)}
             />
           </div>
         )}
+
+        {/* Message notification */}
+        <MessageNotification
+          notification={notification}
+          onClose={() => setNotification(null)}
+          onClick={(userId) => {
+            openChat(userId);
+            setNotification(null);
+          }}
+        />
 
         {/* Online users sidebar */}
         <div className="absolute top-4 left-4 z-10">

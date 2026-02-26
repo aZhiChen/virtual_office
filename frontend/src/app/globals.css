@@ -60,6 +60,12 @@ body {
   border-color: var(--pixel-accent) var(--pixel-accent) var(--pixel-accent) var(--pixel-accent);
 }
 
+/* Placeholder for contenteditable */
+.pixel-input[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--pixel-text-dim);
+}
+
 /* Pixel-style panel */
 .pixel-panel {
   border: 3px solid;

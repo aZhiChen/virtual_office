@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import {
+  EMOJI_LIST,
+  getEmojiUrl,
+  formatEmojiMessage,
+  parseMixedMessage,
+} from "@/lib/emoji";
 
 export interface ChatMessage {
   from_user_id: number;
@@ -26,8 +32,10 @@ export default function ChatPanel({
   onSend,
   onClose,
 }: Props) {
-  const [input, setInput] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (listRef.current) {
@@ -35,11 +43,107 @@ export default function ChatPanel({
     }
   }, [messages]);
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        showEmojiPicker &&
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(e.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showEmojiPicker]);
+
+  const extractInputContent = (): string => {
+    const el = inputRef.current;
+    if (!el) return "";
+    const parts: string[] = [];
+    const walk = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        parts.push(node.textContent || "");
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const elem = node as HTMLElement;
+        if (elem.tagName === "IMG" && elem.dataset.emoji) {
+          parts.push(formatEmojiMessage(elem.dataset.emoji));
+        } else {
+          node.childNodes.forEach(walk);
+        }
+      }
+    };
+    el.childNodes.forEach(walk);
+    return parts.join("");
+  };
+
+  const clearInput = () => {
+    const el = inputRef.current;
+    if (el) {
+      el.innerHTML = "";
+      el.focus();
+    }
+  };
+
   const handleSend = () => {
-    const text = input.trim();
+    const text = extractInputContent().trim();
     if (!text) return;
     onSend(text);
-    setInput("");
+    clearInput();
+  };
+
+  const insertEmoji = (filename: string) => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    const img = document.createElement("img");
+    img.src = getEmojiUrl(filename);
+    img.alt = filename;
+    img.dataset.emoji = filename;
+    img.className = "h-5 w-auto object-contain inline-block align-middle";
+    img.contentEditable = "false";
+
+    const sel = window.getSelection();
+    const range = document.createRange();
+
+    if (sel && sel.rangeCount > 0) {
+      const selRange = sel.getRangeAt(0);
+      if (el.contains(selRange.commonAncestorContainer)) {
+        try {
+          range.setStart(selRange.startContainer, selRange.startOffset);
+          range.collapse(true);
+          range.insertNode(img);
+          range.setStartAfter(img);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return;
+        } catch {
+          /* fallback to append */
+        }
+      }
+    }
+    el.appendChild(img);
+    range.setStartAfter(img);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  };
+
+  const renderMessageContent = (message: string) => {
+    const segments = parseMixedMessage(message);
+    return segments.map((seg, i) =>
+      seg.type === "text" ? (
+        <span key={i}>{seg.value}</span>
+      ) : (
+        <img
+          key={i}
+          src={getEmojiUrl(seg.filename)}
+          alt="emoji"
+          className="h-5 w-auto object-contain inline-block align-middle"
+        />
+      )
+    );
   };
 
   return (
@@ -74,7 +178,7 @@ export default function ChatPanel({
                     : "bg-gray-700 text-gray-100"
                 }`}
               >
-                {m.message}
+                {renderMessageContent(m.message)}
               </div>
             </div>
           );
@@ -82,13 +186,49 @@ export default function ChatPanel({
       </div>
 
       {/* Input */}
-      <div className="flex gap-1">
-        <input
-          className="pixel-input flex-1 text-xs"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message..."
+      <div className="flex gap-1 items-center relative" ref={emojiPickerRef}>
+        <button
+          type="button"
+          onClick={() => setShowEmojiPicker((v) => !v)}
+          className="pixel-btn text-xs shrink-0 w-9 h-9 flex items-center justify-center p-0"
+          title="Emoji"
+          aria-label="Choose emoji"
+        >
+          <span className="text-base">😀</span>
+        </button>
+        {showEmojiPicker && (
+          <div className="absolute bottom-full left-0 mb-1 pixel-panel p-2 max-h-40 overflow-y-auto z-50">
+            <p className="text-[10px] text-gray-400 mb-1">Click to insert</p>
+            <div className="grid grid-cols-4 gap-1">
+              {EMOJI_LIST.map((filename) => (
+                <button
+                  key={filename}
+                  type="button"
+                  onClick={() => insertEmoji(filename)}
+                  className="hover:bg-gray-600 rounded p-0.5 transition-colors"
+                >
+                  <img
+                    src={getEmojiUrl(filename)}
+                    alt={filename}
+                    className="w-10 h-10 object-contain"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div
+          ref={inputRef}
+          contentEditable
+          className="pixel-input flex-1 text-xs min-h-[36px] overflow-y-auto"
+          data-placeholder="Type a message"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          suppressContentEditableWarning
         />
         <button className="pixel-btn text-xs" onClick={handleSend}>
           Send
