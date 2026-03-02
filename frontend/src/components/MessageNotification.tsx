@@ -20,11 +20,11 @@ export default function MessageNotification({ notification, onClose, onClick }: 
   useEffect(() => {
     if (notification) {
       setVisible(true);
-      // Auto-dismiss after 8 seconds
+      // Auto-dismiss after 3 seconds
       const timer = setTimeout(() => {
         setVisible(false);
         setTimeout(onClose, 300); // Wait for fade-out animation
-      }, 8000);
+      }, 3000);
       return () => clearTimeout(timer);
     } else {
       setVisible(false);

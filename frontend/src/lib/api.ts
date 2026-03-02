@@ -74,4 +74,77 @@ export const api = {
   // Chat
   getChatHistory: (withUserId: number) =>
     apiFetch(`/api/chat/history?with_user_id=${withUserId}`),
+
+  // Note
+  getNote: () => apiFetch("/api/note"),
+
+  createTaskAndAdd: (content: string) =>
+    apiFetch("/api/note/task", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+
+  addTaskToNote: (task_id: number) =>
+    apiFetch("/api/note/add", {
+      method: "POST",
+      body: JSON.stringify({ task_id }),
+    }),
+
+  completeTask: (task_id: number) =>
+    apiFetch(`/api/note/complete/${task_id}`, { method: "PUT" }),
+
+  clearNote: () =>
+    apiFetch("/api/note/clear", { method: "DELETE" }),
+
+  reorderNote: (note_item_ids: number[]) =>
+    apiFetch("/api/note/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ note_item_ids }),
+    }),
+
+  removeNoteItem: (note_item_id: number) =>
+    apiFetch(`/api/note/item/${note_item_id}`, { method: "DELETE" }),
+
+  getPendingBox: () => apiFetch("/api/note/box/pending"),
+
+  getCompletedBox: () => apiFetch("/api/note/box/completed"),
+
+  // Announcement
+  getAnnouncementFeed: (limit = 20) =>
+    apiFetch(`/api/announcement/feed?limit=${limit}`),
+
+  getAnnouncementFeedSummary: () =>
+    apiFetch("/api/announcement/feed/summary"),
+
+  createPersonalPost: (content?: string, image_url?: string) =>
+    apiFetch("/api/announcement/post", {
+      method: "POST",
+      body: JSON.stringify({ content, image_url }),
+    }),
+
+  deletePersonalPost: (post_id: number) =>
+    apiFetch(`/api/announcement/post/${post_id}`, {
+      method: "DELETE",
+    }),
+
+  likeAnnouncement: (target_type: "system" | "personal", target_id: number) =>
+    apiFetch("/api/announcement/like", {
+      method: "POST",
+      body: JSON.stringify({ target_type, target_id }),
+    }),
+
+  unlikeAnnouncement: (target_type: "system" | "personal", target_id: number) =>
+    apiFetch("/api/announcement/unlike", {
+      method: "POST",
+      body: JSON.stringify({ target_type, target_id }),
+    }),
+
+  getAnnouncementComments: (target_type: "system" | "personal", target_id: number) =>
+    apiFetch(`/api/announcement/comments?target_type=${target_type}&target_id=${target_id}`),
+
+  createAnnouncementComment: (target_type: "system" | "personal", target_id: number, content: string) =>
+    apiFetch("/api/announcement/comment", {
+      method: "POST",
+      body: JSON.stringify({ target_type, target_id, content }),
+    }),
 };

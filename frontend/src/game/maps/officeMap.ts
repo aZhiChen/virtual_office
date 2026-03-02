@@ -80,6 +80,8 @@ export const FURNITURE: FurnitureDef[] = [
   // Meeting room – chairs (placed via MEETING_ROOM_CHAIRS array, rendered separately)
   // Meeting room – monitor on top center
   { type: "monitor", tileX: 13.5, tileY: 14, widthTiles: 2.25, heightTiles: 2.25 },
+  // Office right side bulletin board monitor
+  { type: "bulletin_board", tileX: 36, tileY: 7, widthTiles: 2, heightTiles: 2 },
   // Dining area – top row: microwave (left), storage1, storage2, refrigerator (right)
   { type: "microwave", tileX: 23, tileY: 14, widthTiles: 1.5, heightTiles: 1.5 },
   { type: "dinning_storage1", tileX: 33, tileY: 14, widthTiles: 2, heightTiles: 2 },

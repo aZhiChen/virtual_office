@@ -8,6 +8,11 @@ import { getWSClient, destroyWSClient } from "@/lib/ws";
 import ChatPanel, { ChatMessage } from "@/components/ChatPanel";
 import ControlToggle from "@/components/ControlToggle";
 import MessageNotification, { Notification } from "@/components/MessageNotification";
+import NotePanel from "@/components/NotePanel";
+import AnnouncementPanel from "@/components/AnnouncementPanel";
+import AnnouncementNotification, {
+  AnnouncementNotificationData,
+} from "@/components/AnnouncementNotification";
 
 // Dynamically import PhaserGame so it only loads client-side
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
@@ -44,6 +49,12 @@ export default function OfficePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatHistoryCache, setChatHistoryCache] = useState<Record<number, ChatMessage[]>>({});
   const [notification, setNotification] = useState<Notification | null>(null);
+  const [showNote, setShowNote] = useState(false);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [announcementNotification, setAnnouncementNotification] =
+    useState<AnnouncementNotificationData | null>(null);
+  const latestSystemRef = useRef<string | null>(null);
+  const latestPersonalRef = useRef<string | null>(null);
   const wsRef = useRef<ReturnType<typeof getWSClient> | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
   const chatTargetRef = useRef<{ id: number; name: string } | null>(null);
@@ -61,6 +72,11 @@ export default function OfficePage() {
   useEffect(() => {
     onlineUsersRef.current = onlineUsers;
   }, [onlineUsers]);
+
+  const openAnnouncementPanel = useCallback(() => {
+    setShowAnnouncement(true);
+    setAnnouncementNotification(null);
+  }, []);
 
   // Load profile
   useEffect(() => {
@@ -179,12 +195,98 @@ export default function OfficePage() {
       window.dispatchEvent(new CustomEvent("react:seat_state", { detail: data }));
     });
 
+    ws.on("announcement_updated", (data: any) => {
+      const currentProfile = profileRef.current;
+      const actorUserId = Number(data.actor_user_id || 0);
+      const isFromMe = !!currentProfile && actorUserId === currentProfile.id;
+      window.dispatchEvent(new CustomEvent("announcement:refresh", { detail: data }));
+      if (isFromMe) return;
+
+      const action = data.action as string;
+      const text =
+        action === "comment_created"
+          ? "有同事发表了新评论"
+          : action === "liked"
+          ? "有同事点赞了公告"
+          : action === "unliked"
+          ? "有同事取消了点赞"
+          : action === "post_deleted"
+          ? "有同事删除了一条动态"
+          : action === "system_generated"
+          ? "收到新的系统鼓励消息"
+          : "有同事发布了新动态";
+      setAnnouncementNotification({
+        id: `announcement-${Date.now()}`,
+        text,
+      });
+    });
+
     ws.connect();
 
     return () => {
       destroyWSClient();
     };
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile) return;
+    let stopped = false;
+
+    const checkAnnouncements = async (silent = false) => {
+      try {
+        const summary = (await api.getAnnouncementFeedSummary()) as {
+          latest_system_created_at: string | null;
+          latest_personal_created_at: string | null;
+        };
+        const firstRun = latestSystemRef.current === null && latestPersonalRef.current === null;
+        const hasNewSystem =
+          !!latestSystemRef.current &&
+          !!summary.latest_system_created_at &&
+          summary.latest_system_created_at !== latestSystemRef.current;
+        const hasNewPersonal =
+          !!latestPersonalRef.current &&
+          !!summary.latest_personal_created_at &&
+          summary.latest_personal_created_at !== latestPersonalRef.current;
+
+        latestSystemRef.current = summary.latest_system_created_at;
+        latestPersonalRef.current = summary.latest_personal_created_at;
+
+        if (!silent && !firstRun && (hasNewSystem || hasNewPersonal)) {
+          const text = hasNewSystem && hasNewPersonal
+            ? "系统消息和同事动态都有更新"
+            : hasNewSystem
+            ? "收到新的系统鼓励消息"
+            : "有同事发布了新动态";
+          setAnnouncementNotification({
+            id: `announcement-${Date.now()}`,
+            text,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    checkAnnouncements(true);
+    const timer = setInterval(() => {
+      if (!stopped) checkAnnouncements(false);
+    }, 20000);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [profile]);
+
+  useEffect(() => {
+    const handleOpenAnnouncement = () => {
+      openAnnouncementPanel();
+    };
+    window.addEventListener("game:open_announcement", handleOpenAnnouncement);
+    return () => {
+      window.removeEventListener("game:open_announcement", handleOpenAnnouncement);
+    };
+  }, [openAnnouncementPanel]);
 
   // When game scene is ready, send presence snapshot (users + animals) so it can show everyone
   useEffect(() => {
@@ -360,6 +462,18 @@ export default function OfficePage() {
             onStandUp={standUp}
           />
           <button
+            className={`pixel-btn text-xs ${showAnnouncement ? "!bg-[var(--pixel-accent)]" : ""}`}
+            onClick={() => setShowAnnouncement((v) => !v)}
+          >
+            Announcement
+          </button>
+          <button
+            className={`pixel-btn text-xs ${showNote ? "!bg-[var(--pixel-accent)]" : ""}`}
+            onClick={() => setShowNote((v) => !v)}
+          >
+            Notes
+          </button>
+          <button
             className="pixel-btn text-xs"
             onClick={() => router.push("/customize/personality")}
           >
@@ -421,7 +535,17 @@ export default function OfficePage() {
 
         {/* Chat panel */}
         {chatTarget && (
-          <div className="absolute top-4 right-4 z-20">
+          <div
+            className={`absolute top-4 z-20 ${
+              showAnnouncement && showNote
+                ? "right-[920px]"
+                : showAnnouncement
+                ? "right-[500px]"
+                : showNote
+                ? "right-[420px]"
+                : "right-4"
+            }`}
+          >
             <ChatPanel
               targetUserId={chatTarget.id}
               targetUsername={chatTarget.name}
@@ -447,6 +571,19 @@ export default function OfficePage() {
           </div>
         )}
 
+        {/* Note panel */}
+        {showNote && (
+          <div className={`absolute top-4 z-30 ${showAnnouncement ? "right-[500px]" : "right-4"}`}>
+            <NotePanel onClose={() => setShowNote(false)} />
+          </div>
+        )}
+
+        {showAnnouncement && (
+          <div className="absolute top-4 right-4 z-40">
+            <AnnouncementPanel onClose={() => setShowAnnouncement(false)} />
+          </div>
+        )}
+
         {/* Message notification */}
         <MessageNotification
           notification={notification}
@@ -455,6 +592,11 @@ export default function OfficePage() {
             openChat(userId);
             setNotification(null);
           }}
+        />
+        <AnnouncementNotification
+          notification={announcementNotification}
+          onClose={() => setAnnouncementNotification(null)}
+          onClick={() => openAnnouncementPanel()}
         />
 
         {/* Online users sidebar */}

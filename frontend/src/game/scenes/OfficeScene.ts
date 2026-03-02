@@ -75,6 +75,9 @@ export function createOfficeScene(Phaser: any) {
     private currentDiningChairIndex: number | null = null;
     private currentDeskId: number | null = null;
     private applianceLabel: any = null; // "微波炉" / "冰箱" / "储物柜" when near
+    private bulletinBoardSprite: any = null;
+    private nearBulletinBoard = false;
+    private bulletinPromptLabel: any = null;
     private treadmillSprites: any[] = []; // treadmill sprites from FURNITURE
     private lastNearbyTreadmill: number | null = null;
     private treadmillPromptLabel: any = null; // "我想跑步" when near
@@ -114,6 +117,7 @@ export function createOfficeScene(Phaser: any) {
       this.load.image("blue_chair", "/img/blue_chair.png");
       this.load.image("chair2", "/img/chair2.png");
       this.load.image("monitor", "/img/morniter.png");
+      this.load.image("bulletin_board", "/img/morniter.png");
       // Dining area assets
       this.load.image("microwave", "/img/microwave.png");
       this.load.image("dinning_storage1", "/img/dinning_storage1.png");
@@ -244,6 +248,7 @@ export function createOfficeScene(Phaser: any) {
       // Skip direct image assets - they are loaded directly, not generated
       const directImageTypes = [
         "lamp", "meeting_room_desk", "blue_chair", "chair2", "monitor",
+        "bulletin_board",
         "microwave", "dinning_storage1", "dinning_storage2", "refrigerator",
         "dinning_desk", "dinning_chair_1", "dinning_chair_2", "dinning_chair_3", "dinning_chair_4",
         "treadmill",
@@ -276,6 +281,7 @@ export function createOfficeScene(Phaser: any) {
         // Check if this is a direct image asset (not generated texture)
         const directImageTypes = [
           "lamp", "meeting_room_desk", "blue_chair", "chair2", "monitor",
+          "bulletin_board",
           "microwave", "dinning_storage1", "dinning_storage2", "refrigerator",
           "dinning_desk", "dinning_chair_1", "dinning_chair_2", "dinning_chair_3", "dinning_chair_4",
           "treadmill",
@@ -298,6 +304,15 @@ export function createOfficeScene(Phaser: any) {
         // Track dining desk for depth ordering when sitting on chair 1, 2, 4
         if (f.type === "dinning_desk") {
           this.dinningDeskSprite = sprite;
+        }
+        if (f.type === "bulletin_board") {
+          this.bulletinBoardSprite = sprite;
+          sprite.setInteractive({ useHandCursor: true });
+          sprite.on("pointerdown", () => {
+            if (this.nearBulletinBoard) {
+              window.dispatchEvent(new CustomEvent("game:open_announcement"));
+            }
+          });
         }
         // Track dining chairs for sit interaction (order: chair_1, chair_2, chair_4, chair_3)
         const diningChairTypes = ["dinning_chair_1", "dinning_chair_2", "dinning_chair_4", "dinning_chair_3"];
@@ -726,11 +741,48 @@ export function createOfficeScene(Phaser: any) {
       this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     }
 
+    private inputFocused = false;
+
     private setupInput() {
       this.cursors = this.input.keyboard!.createCursorKeys();
+      const kb = this.input.keyboard!;
+      const codes = [32, 37, 38, 39, 40]; // Space, Left, Up, Right, Down
+
+      const isTextInput = (el: EventTarget | null): boolean => {
+        if (!el || !(el instanceof HTMLElement)) return false;
+        const tag = el.tagName;
+        return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+      };
+
+      const onFocusIn = (e: FocusEvent) => {
+        if (isTextInput(e.target)) {
+          this.inputFocused = true;
+          kb.removeCapture(codes);
+        }
+      };
+
+      const onPointerDown = (e: MouseEvent) => {
+        if (!isTextInput(e.target)) {
+          this.inputFocused = false;
+          kb.addCapture(codes);
+          // Blur active input to hide caret and stop it from receiving keys
+          if (document.activeElement instanceof HTMLElement && isTextInput(document.activeElement)) {
+            document.activeElement.blur();
+          }
+        }
+      };
+
+      document.addEventListener("focusin", onFocusIn);
+      document.addEventListener("pointerdown", onPointerDown);
+      this.events.on("shutdown", () => {
+        document.removeEventListener("focusin", onFocusIn);
+        document.removeEventListener("pointerdown", onPointerDown);
+      });
+
       // Add space key for sitting
-      const spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+      const spaceKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
       spaceKey.on('down', () => {
+        if (this.inputFocused) return;
         if (this.isOnTreadmill) {
           this.standOffTreadmill();
         } else if (this.isSitting) {
@@ -743,7 +795,9 @@ export function createOfficeScene(Phaser: any) {
             window.dispatchEvent(new CustomEvent("game:stand_up"));
           }
         } else {
-          if (this.lastNearbyTreadmill !== null) {
+          if (this.nearBulletinBoard) {
+            window.dispatchEvent(new CustomEvent("game:open_announcement"));
+          } else if (this.lastNearbyTreadmill !== null) {
             this.standOnTreadmill(this.lastNearbyTreadmill);
           } else if (this.lastNearbyChair !== null) {
             this.sitOnChair(this.lastNearbyChair);
@@ -761,6 +815,13 @@ export function createOfficeScene(Phaser: any) {
     /* ---- movement ---- */
 
     private handleMovement() {
+      if (this.inputFocused) {
+        const target =
+          this.controlTarget === "pet" && this.pet ? this.pet : this.player;
+        target.setVelocity(0, 0);
+        return;
+      }
+
       const target =
         this.controlTarget === "pet" && this.pet ? this.pet : this.player;
 
@@ -1003,6 +1064,47 @@ export function createOfficeScene(Phaser: any) {
         }
       } else {
         if (this.applianceLabel) this.applianceLabel.setVisible(false);
+      }
+
+      // Nearby bulletin board monitor
+      let nextNearBulletin = false;
+      if (this.bulletinBoardSprite) {
+        const dist = Phaser.Math.Distance.Between(
+          this.player.x,
+          this.player.y,
+          this.bulletinBoardSprite.x,
+          this.bulletinBoardSprite.y,
+        );
+        nextNearBulletin = dist < TILE_SIZE * 2.5;
+      }
+      if (nextNearBulletin !== this.nearBulletinBoard) {
+        this.nearBulletinBoard = nextNearBulletin;
+        if (this.nearBulletinBoard) {
+          const x = this.bulletinBoardSprite.x;
+          const y = this.bulletinBoardSprite.y - 40;
+          if (!this.bulletinPromptLabel) {
+            this.bulletinPromptLabel = this.add
+              .text(x, y, "公告栏\n按空格键查看", {
+                fontSize: "12px",
+                color: "#fff",
+                backgroundColor: "#000000aa",
+                padding: { x: 6, y: 3 },
+                fontFamily: "monospace",
+              })
+              .setOrigin(0.5)
+              .setDepth(LABEL_DEPTH);
+          } else {
+            this.bulletinPromptLabel.setPosition(x, y);
+            this.bulletinPromptLabel.setVisible(true);
+          }
+        } else if (this.bulletinPromptLabel) {
+          this.bulletinPromptLabel.setVisible(false);
+        }
+      } else if (this.nearBulletinBoard && this.bulletinPromptLabel && this.bulletinBoardSprite) {
+        this.bulletinPromptLabel.setPosition(
+          this.bulletinBoardSprite.x,
+          this.bulletinBoardSprite.y - 40,
+        );
       }
 
       // Nearby dining chairs – show sit prompt and track for space key

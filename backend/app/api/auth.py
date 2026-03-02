@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.core.logger import logger
 from app.models.user import User
+from app.models.note import Note
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -49,6 +50,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    db.add(Note(user_id=user.id))
+    db.commit()
     logger.info("User registered: id=%s username=%s", user.id, user.username)
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(
