@@ -134,7 +134,7 @@ virtual_office/
   - `conda activate virtual_office`
   - `cd backend && pip install -r requirements.txt`
   - `cp .env.example .env` 并填写 LLM 配置
-  - `python -m uvicorn app.main:app --reload --port 8000`
+  - `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
 - **前端**
   - `cd frontend && npm install`

@@ -1,6 +1,11 @@
 type MessageHandler = (data: any) => void;
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://127.0.0.1:8000";
+function getWsBase(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window !== "undefined") return `ws://${window.location.hostname}:8000`;
+  return "ws://127.0.0.1:8000";
+}
+const WS_BASE = getWsBase();
 
 export class WSClient {
   private ws: WebSocket | null = null;

@@ -75,6 +75,7 @@ app = FastAPI(title="Virtual Office API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https?://[^/]+:3000$",  # 允许任意 host:3000 访问（前端端口）
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

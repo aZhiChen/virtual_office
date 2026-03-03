@@ -25,7 +25,7 @@ cp .env.example .env
 # Edit .env with your LLM API key (LLM_API_KEY, LLM_BASE_URL)
 
 # Start the backend server
-python -m uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Backend (venv alternative)
@@ -40,7 +40,7 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
-python -m uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
