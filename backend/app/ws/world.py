@@ -7,9 +7,12 @@ from app.core.database import SessionLocal
 from app.core.security import decode_access_token
 from app.models.user import User
 from app.models.chat_message import ChatMessage
+from app.models.system_message import SystemMessage
 from app.ws.manager import manager
 from app.services.llm_client import generate_afk_reply
 from app.core.logger import logger
+from app.api.easter_egg import _get_or_create_system_user
+from app.api.announcement import _broadcast_announcement_updated
 
 router = APIRouter()
 
@@ -45,6 +48,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "pet_type": user.pet_type or "",
             "personality": user.personality or "",
             "is_afk": user.is_afk,
+            "status": user.status or "",
         }
     finally:
         db.close()
@@ -65,6 +69,28 @@ async def websocket_endpoint(websocket: WebSocket):
 def _occupant_name(uid: int) -> str:
     p = manager.user_profiles.get(uid, {})
     return p.get("display_name") or p.get("username") or f"User {uid}"
+
+
+def _create_area_system_announcement(content: str, message_type: str) -> None:
+    """Create a system announcement for meeting room / dining area activity."""
+    db = SessionLocal()
+    try:
+        system_user = _get_or_create_system_user(db)
+        msg = SystemMessage(
+            user_id=system_user.id,
+            message_type=message_type,
+            streak_days=int(time.time() * 1000),  # unique per message
+            content=content,
+        )
+        db.add(msg)
+        db.commit()
+        db.refresh(msg)
+        asyncio.create_task(_broadcast_announcement_updated("area_activity", system_user.id, "system", msg.id))
+    except Exception as e:
+        logger.exception("Failed to create area system announcement: %s", e)
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _clear_user_seat(user_id: int) -> None:
@@ -205,6 +231,15 @@ async def _handle_message(user_id: int, data: dict):
             await manager.broadcast(
                 {"type": "seat_state", "user_id": user_id, "action": "sit", "seat_type": "meeting_chair", "seat_id": chair_id}
             )
+            # Notify when 2+ people in meeting room (系统公告)
+            if len(manager.meeting_chair_occupants) >= 2:
+                names = [_occupant_name(uid) for uid in manager.meeting_chair_occupants.values()]
+                if len(names) == 2:
+                    text = f"{names[0]}和{names[1]}在会议室商量团队大事"
+                else:
+                    text = "、".join(names[:-1]) + f"和{names[-1]}在会议室商量团队大事"
+                await manager.broadcast({"type": "area_activity_notification", "text": text})
+                _create_area_system_announcement(text, "meeting_room")
 
     elif msg_type == "sit_dining_chair":
         index = data.get("index")
@@ -230,6 +265,12 @@ async def _handle_message(user_id: int, data: dict):
             await manager.broadcast(
                 {"type": "seat_state", "user_id": user_id, "action": "sit", "seat_type": "dining_chair", "seat_id": index}
             )
+            # Notify when 2+ people in dining area (系统公告)
+            if len(manager.dining_chair_occupants) >= 2:
+                names = [_occupant_name(uid) for uid in manager.dining_chair_occupants.values()]
+                text = "，".join(names) + "在用餐区聊八卦"
+                await manager.broadcast({"type": "area_activity_notification", "text": text})
+                _create_area_system_announcement(text, "dining_area")
 
     elif msg_type == "on_treadmill":
         index = data.get("index")
@@ -276,6 +317,27 @@ async def _handle_message(user_id: int, data: dict):
         target = data.get("target", "character")
         manager.control_targets[user_id] = target
         logger.info("Control target changed: user_id=%s target=%s", user_id, target)
+
+    elif msg_type == "set_status":
+        status = (data.get("status") or "").strip()[:200]
+        if user_id in manager.user_profiles:
+            manager.user_profiles[user_id]["status"] = status
+        db = SessionLocal()
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                from app.api.profile import _status_display_length
+                if _status_display_length(status) <= 15:
+                    user.status = status
+                    db.commit()
+        except Exception as e:
+            logger.exception("Failed to update status: %s", e)
+        finally:
+            db.close()
+        await manager.broadcast(
+            {"type": "status_changed", "user_id": user_id, "status": manager.user_profiles.get(user_id, {}).get("status", "")}
+        )
+        logger.info("Status changed: user_id=%s status=%s", user_id, status[:30])
 
 
 def _get_chat_history_for_llm(afk_user_id: int, from_user_id: int) -> list[dict]:

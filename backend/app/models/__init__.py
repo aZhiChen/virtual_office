@@ -8,6 +8,7 @@ from app.models.system_message import SystemMessage
 from app.models.personal_post import PersonalPost
 from app.models.announcement_like import AnnouncementLike
 from app.models.announcement_comment import AnnouncementComment
+from app.models.plant_easter_egg import PlantEasterEgg
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "PersonalPost",
     "AnnouncementLike",
     "AnnouncementComment",
+    "PlantEasterEgg",
 ]

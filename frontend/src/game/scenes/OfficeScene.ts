@@ -26,12 +26,14 @@ import {
   MAP_ROWS,
   DESKS,
   FURNITURE,
+  PLANT_DEFS,
   AREA_LABELS,
   PET_SPAWN,
   MEETING_ROOM_CHAIRS,
 } from "../maps/officeMap";
 
 import { SKIN_COLORS, HAIR_COLORS, CLOTHING_COLORS, PET_COLORS } from "../sprites/colors";
+import { parseMixedMessage } from "@/lib/emoji";
 
 /** Constant depth for name labels – always on top */
 const LABEL_DEPTH = MAP_ROWS * TILE_SIZE + 200;
@@ -86,6 +88,8 @@ export function createOfficeScene(Phaser: any) {
     private currentTreadmillIndex: number | null = null;
     private officeAnimals: any[] = []; // 4 cows + 4 horses, random walk, collide with each other
     private officeAnimalTime = 0;
+    /** First sync uses server position; after that only velocity so physics can resolve collisions. */
+    private officeAnimalsInitialSyncDone = false;
     /** Other player at desk: user_id -> desk_id (null when stood up). */
     private otherPlayerDesk: Map<number, number | null> = new Map();
     /** Other player at meeting/dining/treadmill: user_id -> { type, id } (null when stood up). */
@@ -101,6 +105,20 @@ export function createOfficeScene(Phaser: any) {
     /** "<人名>正在使用，请排队或使用其他<设备名>" above player when device is occupied. */
     private deviceOccupiedLabel: any = null;
     private deviceOccupiedHideAt = 0;
+    /** Status bubble above player head (speech bubble with arrow). */
+    private playerStatusBubble: any = null;
+    /** Status bubbles above other players. */
+    private otherPlayerStatusBubbles: Map<number, any> = new Map();
+    private otherPlayerStatus: Map<number, string> = new Map();
+    /** Plant sprites for easter egg (plant_id -> sprite). */
+    private plantSprites: Map<number, any> = new Map();
+    private lastNearbyPlant: number | null = null;
+    private plantPromptLabel: any = null;
+    /** Popup above plant when easter egg is discovered. */
+    private plantEasterEggPopup: any = null;
+    private plantEasterEggPopupHideAt = 0;
+    /** Current plant easter egg state from server (plant_id -> { content, hider_user_id, hider_display_name }). */
+    private plantEggs: Map<number, { content: string; hider_user_id: number; hider_display_name: string }> = new Map();
 
     constructor() {
       super("OfficeScene");
@@ -131,7 +149,7 @@ export function createOfficeScene(Phaser: any) {
       // Game room assets
       this.load.image("treadmill", "/img/game/treadmill.png");
       // Pet options from /img/animals (except cow, horse – used as office NPCs)
-      ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard"].forEach((name) => {
+      ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard", "rabbit", "turtle", "bird", "snake", "crab"].forEach((name) => {
         this.load.image("pet_" + name, "/img/animals/" + name + ".png");
       });
       // Office area NPCs: cow and horse
@@ -139,6 +157,10 @@ export function createOfficeScene(Phaser: any) {
       this.load.image("horse", "/img/animals/horse.png");
       // Load desk floor tile from piskel
       this.load.image("desk_floor_tile", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACUElEQVR4AeyUQUhUQRjH/+tBhAJP3QLrUiRslFsh28EIIohADwaxEB2SIBcCvYQERUFIhwyi44oH0ZMe9SgKgh7Uy6IH8aDg6sWLCopent9/YNZ5zzfvzapPRVzmt9/MNzPf959vZrcK5/xxFeCJzihk+njNRYD3vKkJUUhqihNTeXMRoKKOTUwgDDV5gi9nAcyRa/uG1+0d6P49qix9FliRMI4sr0jAVvU2nta9wMbOKu7euHckmOlIt82BzExPK2vOmf2KBDC53rxeWtXdoOXJ8unhFL6PtWI5l0Ox0MA1KX4FcRbAR9j15RXInx8fMVj4qR5mMCDHK/X1eJLJ4HFNjYI+G3ECvH89PWhpblawb6L9geCpuoUFvJl5i5F8Hs/ad3D7/y0uUZVhx6TKHIT0U587O5HNZsuslUrQaD/vWfb6ElxvuaaqQEtkPrRFCWBAryNTi4H8yzJ74wVoTD/XSQa1RyyKN+fxqLFRWfbpEzgv5rDZBHhz3bUg71oBV7g+DkntE2ETIOvOptkEpBq6NlFcTPvoHwJc+dW7DxPGI3Is38/RJkDWAek7xbJl/8H9NOLgBl7Z1w/VIBxrK31fchkjUgAXmFAEMX22Pk9vmzP9TgJYOpP3fZOwoYMbp9auUBsrgIlkJ0vnxN/ZTd/dy97IFisgcrdlkqfXWJaU3YkIYPRTfQMMWCmsgMueJCqg/kP0ox1e2o3UkYQAJjQfLMdWkhJgTRicuBJwoSugXrPcGR+UmGO3yDhxFThpcq3aGidOgA6QmL38AuJKdwAAAP//NhOr0AAAAAZJREFUAwBFhAZQwaWGTwAAAABJRU5ErkJggg==");
+      // Emoji for status bubble
+      for (let i = 1; i <= 45; i++) {
+        this.load.image("emoji_" + i, "/img/emoji/" + i + ".png");
+      }
     }
 
     init(data: any) {
@@ -329,6 +351,32 @@ export function createOfficeScene(Phaser: any) {
         // Track treadmill sprites for run interaction
         if (f.type === "treadmill") {
           this.treadmillSprites.push(sprite);
+        }
+        // Track plant sprites for easter egg (match by position)
+        if (f.type === "plant") {
+          const plantDef = PLANT_DEFS.find(
+            (p) => p.tileX === f.tileX && p.tileY === f.tileY
+          );
+          if (plantDef) {
+            this.plantSprites.set(plantDef.id, sprite);
+            sprite.setInteractive({ useHandCursor: true });
+            sprite.on("pointerdown", () => {
+              if (this.lastNearbyPlant === plantDef.id) {
+                const egg = this.plantEggs.get(plantDef.id);
+                const hasEgg = !!egg;
+                const isMyEgg = hasEgg && egg.hider_user_id === this.playerConfig.id;
+                window.dispatchEvent(
+                  new CustomEvent("game:plant_interact", {
+                    detail: {
+                      plant_id: plantDef.id,
+                      has_egg: hasEgg && !isMyEgg,
+                      can_hide: !hasEgg,
+                    },
+                  })
+                );
+              }
+            });
+          }
         }
       }
     }
@@ -616,6 +664,13 @@ export function createOfficeScene(Phaser: any) {
         .setOrigin(0.5)
         .setDepth(LABEL_DEPTH);
 
+      const statusText = (this.playerConfig.status || "").trim();
+      if (statusText) {
+        const name = this.playerConfig.display_name || "You";
+        this.playerStatusBubble = this.createStatusBubble(statusText, name, spawnX, spawnY, true);
+        this.playerNameLabel.setVisible(false);
+      }
+
       // Emit initial position
       window.dispatchEvent(
         new CustomEvent("game:player_moved", {
@@ -624,7 +679,101 @@ export function createOfficeScene(Phaser: any) {
       );
     }
 
-    private static readonly IMAGE_PET_TYPES = ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard"];
+    /** Create status bubble: "<人名>在<用户输入>", hides name label when shown. interactive: double-click opens edit (local player only). */
+    private createStatusBubble(
+      statusText: string,
+      displayName: string,
+      anchorX: number,
+      anchorY: number,
+      interactive = false
+    ): any {
+      const fullText = `${displayName} 在${statusText}`;
+      const segments = parseMixedMessage(fullText);
+      if (segments.length === 0 || segments.every((s) => s.type === "text" && !s.value.trim()))
+        return null;
+
+      const padH = 10;
+      const padV = 3;
+      const emojiSize = 14;
+      const lineHeight = 14;
+      let contentW = 0;
+      let contentH = lineHeight;
+      const parts: any[] = [];
+      let x = 0;
+
+      for (const seg of segments) {
+        if (seg.type === "text" && seg.value) {
+          const t = this.add.text(0, 0, seg.value, {
+            fontSize: "10px",
+            color: "#fff",
+            fontFamily: "monospace",
+          });
+          t.setOrigin(0, 0);
+          t.setPosition(x, 0);
+          parts.push({ obj: t, w: t.width, h: t.height });
+          x += t.width;
+          contentW = x;
+          contentH = Math.max(contentH, t.height);
+        } else if (seg.type === "emoji") {
+          const num = parseInt(seg.filename.replace(/\.png$/, ""), 10) || 1;
+          const key = "emoji_" + num;
+          if (this.textures.exists(key)) {
+            const img = this.add.image(x + emojiSize / 2, emojiSize / 2, key);
+            img.setDisplaySize(emojiSize, emojiSize);
+            img.setOrigin(0.5);
+            img.setPosition(x + emojiSize / 2, emojiSize / 2);
+            parts.push({ obj: img, w: emojiSize, h: emojiSize });
+            x += emojiSize;
+            contentW = x;
+          }
+        }
+      }
+      if (contentW === 0) return null;
+
+      const boxW = contentW + padH * 2;
+      const boxH = contentH + padV * 2;
+      const triH = 6;
+      const totalH = boxH + triH;
+      // Position so arrow tip points at (anchorX, anchorY - 28); container center = tip - totalH/2; offset -8 to move bubble closer to head
+      const bubbleCenterY = anchorY - 28 - totalH / 2 - 8;
+
+      const container = this.add.container(anchorX, bubbleCenterY);
+      container.setDepth(LABEL_DEPTH + 1);
+      (container as any).statusBubbleTotalH = totalH;
+
+      const g = this.add.graphics();
+      g.fillStyle(0x808080, 0.7);
+      g.fillRoundedRect(-boxW / 2, 0, boxW, boxH, 4);
+      g.fillTriangle(-6, boxH, 6, boxH, 0, boxH + triH);
+      container.add(g);
+
+      for (const p of parts) {
+        const dx = -contentW / 2;
+        const dy = padV;
+        if (p.obj.setPosition) {
+          p.obj.setPosition(p.obj.x + dx, (p.obj.y || 0) + dy);
+        }
+        container.add(p.obj);
+      }
+
+      if (interactive) {
+        const hitArea = new Phaser.Geom.Rectangle(-boxW / 2, 0, boxW, totalH);
+        container.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+        container.setData("lastClick", 0);
+        container.on("pointerdown", () => {
+          const last = container.getData("lastClick") || 0;
+          const now = Date.now();
+          if (now - last < 350) {
+            window.dispatchEvent(new CustomEvent("game:edit_status"));
+          }
+          container.setData("lastClick", now);
+        });
+      }
+
+      return container;
+    }
+
+    private static readonly IMAGE_PET_TYPES = ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard", "crab", "rabbit", "snake", "turtle", "bird"];
     private static readonly PET_DISPLAY = Math.round(24 * 1.5); // 31, 1.3x original
     private static readonly PET_BODY = Math.round(12 * 1.5);     // 16
     private static readonly PET_OFFSET = Math.round(2 * 1.5);   // 3
@@ -634,7 +783,7 @@ export function createOfficeScene(Phaser: any) {
       const base = petType.replace(/\d+$/, "");
       const map: Record<string, string> = {
         cat: "猫", dog: "狗", snake: "蛇", crab: "蟹", rabbit: "兔",
-        gecko: "壁虎", lizard: "蜥蜴", turtle: "龟", bird: "鸟",
+        lizard: "蜥蜴", turtle: "龟", bird: "鸟",
       };
       return map[base] || petType;
     }
@@ -797,6 +946,19 @@ export function createOfficeScene(Phaser: any) {
         } else {
           if (this.nearBulletinBoard) {
             window.dispatchEvent(new CustomEvent("game:open_announcement"));
+          } else if (this.lastNearbyPlant !== null) {
+            const egg = this.plantEggs.get(this.lastNearbyPlant);
+            const hasEgg = !!egg;
+            const isMyEgg = hasEgg && egg.hider_user_id === this.playerConfig.id;
+            window.dispatchEvent(
+              new CustomEvent("game:plant_interact", {
+                detail: {
+                  plant_id: this.lastNearbyPlant,
+                  has_egg: hasEgg && !isMyEgg,
+                  can_hide: !hasEgg,
+                },
+              })
+            );
           } else if (this.lastNearbyTreadmill !== null) {
             this.standOnTreadmill(this.lastNearbyTreadmill);
           } else if (this.lastNearbyChair !== null) {
@@ -912,16 +1074,19 @@ export function createOfficeScene(Phaser: any) {
       }
     }
 
-    /** Apply server-authoritative positions/velocities to office animals (cows/horses). */
+    /** Apply server velocities to office animals; only use position on first sync so physics can resolve collisions. */
     private applyOfficeAnimalsFromServer(animals: Array<{ index: number; x: number; y: number; vx?: number; vy?: number }> | undefined) {
       if (!animals?.length) return;
       for (const a of animals) {
         const sprite = this.officeAnimals[a.index];
         if (sprite?.body) {
-          sprite.setPosition(a.x, a.y);
+          if (!this.officeAnimalsInitialSyncDone) {
+            sprite.setPosition(a.x, a.y);
+          }
           (sprite.body as Phaser.Physics.Arcade.Body).setVelocity(a.vx ?? 0, a.vy ?? 0);
         }
       }
+      this.officeAnimalsInitialSyncDone = true;
     }
 
     /* ---- proximity checks ---- */
@@ -1198,6 +1363,65 @@ export function createOfficeScene(Phaser: any) {
         if (treadmillSprite) this.treadmillPromptLabel.setPosition(treadmillSprite.x, treadmillSprite.y - 40);
       }
 
+      // Nearby plants – easter egg (discover or hide)
+      let nearbyPlant: number | null = null;
+      if (!this.isSitting && !this.isOnTreadmill) {
+        this.plantSprites.forEach((plantSprite: any, plantId: number) => {
+          const dist = Phaser.Math.Distance.Between(
+            this.player.x,
+            this.player.y,
+            plantSprite.x,
+            plantSprite.y,
+          );
+          if (dist < TILE_SIZE * 2) {
+            nearbyPlant = plantId;
+          }
+        });
+      }
+      if (nearbyPlant !== this.lastNearbyPlant) {
+        this.lastNearbyPlant = nearbyPlant;
+        if (nearbyPlant !== null) {
+          const plantSprite = this.plantSprites.get(nearbyPlant);
+          if (plantSprite) {
+            const egg = this.plantEggs.get(nearbyPlant);
+            const hasEgg = !!egg;
+            const isMyEgg = hasEgg && egg.hider_user_id === this.playerConfig.id;
+            const promptText = hasEgg
+              ? (isMyEgg ? "这是你藏的彩蛋" : "按空格键发现彩蛋")
+              : "按空格键藏彩蛋";
+            if (!this.plantPromptLabel) {
+              this.plantPromptLabel = this.add
+                .text(plantSprite.x, plantSprite.y - 40, promptText, {
+                  fontSize: "12px",
+                  color: "#fff",
+                  backgroundColor: "#000000aa",
+                  padding: { x: 6, y: 3 },
+                  fontFamily: "monospace",
+                })
+                .setOrigin(0.5)
+                .setDepth(LABEL_DEPTH);
+            } else {
+              this.plantPromptLabel.setPosition(plantSprite.x, plantSprite.y - 40);
+              this.plantPromptLabel.setText(promptText);
+              this.plantPromptLabel.setVisible(true);
+            }
+          }
+        } else {
+          if (this.plantPromptLabel) this.plantPromptLabel.setVisible(false);
+        }
+      } else if (nearbyPlant !== null && this.plantPromptLabel) {
+        const plantSprite = this.plantSprites.get(nearbyPlant);
+        if (plantSprite) {
+          this.plantPromptLabel.setPosition(plantSprite.x, plantSprite.y - 40);
+          const egg = this.plantEggs.get(nearbyPlant);
+          const hasEgg = !!egg;
+          const isMyEgg = hasEgg && egg.hider_user_id === this.playerConfig.id;
+          this.plantPromptLabel.setText(
+            hasEgg ? (isMyEgg ? "这是你藏的彩蛋" : "按空格键发现彩蛋") : "按空格键藏彩蛋"
+          );
+        }
+      }
+
       // Nearby users
       const nearUsers: number[] = [];
       this.otherPlayers.forEach((sprite: any, uid: number) => {
@@ -1364,6 +1588,14 @@ export function createOfficeScene(Phaser: any) {
     private updateLabels() {
       if (this.playerNameLabel) {
         this.playerNameLabel.setPosition(this.player.x, this.player.y - 28);
+        this.playerNameLabel.setVisible(!this.playerStatusBubble);
+      }
+      if (this.playerStatusBubble) {
+        const th = (this.playerStatusBubble as any).statusBubbleTotalH || 24;
+        this.playerStatusBubble.setPosition(
+          this.player.x,
+          this.player.y - 28 - th / 2 - 8
+        );
       }
       if (this.petNameLabel && this.pet) {
         this.petNameLabel.setPosition(
@@ -1383,7 +1615,17 @@ export function createOfficeScene(Phaser: any) {
       }
       this.nameLabels.forEach((label: any, uid: number) => {
         const sprite = this.otherPlayers.get(uid);
-        if (sprite) label.setPosition(sprite.x, sprite.y - 28);
+        if (sprite) {
+          label.setPosition(sprite.x, sprite.y - 28);
+          label.setVisible(!this.otherPlayerStatusBubbles.has(uid));
+        }
+      });
+      this.otherPlayerStatusBubbles.forEach((bubble: any, uid: number) => {
+        const sprite = this.otherPlayers.get(uid);
+        if (sprite) {
+          const th = bubble.statusBubbleTotalH || 24;
+          bubble.setPosition(sprite.x, sprite.y - 28 - th / 2 - 8);
+        }
       });
       this.otherWorkingLabels.forEach((label: any, uid: number) => {
         if (!label.visible) return;
@@ -1405,6 +1647,10 @@ export function createOfficeScene(Phaser: any) {
         if (this.time.now >= this.deviceOccupiedHideAt) {
           this.deviceOccupiedLabel.setVisible(false);
         }
+      }
+      if (this.plantEasterEggPopup && this.time.now >= this.plantEasterEggPopupHideAt) {
+        this.plantEasterEggPopup.destroy();
+        this.plantEasterEggPopup = null;
       }
       this.petLabels.forEach((label: any, uid: number) => {
         const pet = this.otherPets.get(uid);
@@ -1584,6 +1830,45 @@ export function createOfficeScene(Phaser: any) {
         this.applyOfficeAnimalsFromServer(e.detail?.animals);
       }) as EventListener);
 
+      window.addEventListener("react:plant_eggs_update", ((e: CustomEvent) => {
+        const eggs = e.detail?.eggs || {};
+        this.plantEggs.clear();
+        Object.entries(eggs).forEach(([plantIdStr, egg]: [string, any]) => {
+          this.plantEggs.set(parseInt(plantIdStr), {
+            content: egg.content,
+            hider_user_id: egg.hider_user_id,
+            hider_display_name: egg.hider_display_name || `User${egg.hider_user_id}`,
+          });
+        });
+      }) as EventListener);
+
+      window.addEventListener("react:easter_egg_discovered", ((e: CustomEvent) => {
+        const { plant_id, content, discoverer_name } = e.detail;
+        this.plantEggs.delete(plant_id);
+        const plantSprite = this.plantSprites.get(plant_id);
+        if (plantSprite) {
+          // Replace [emoji:xxx] with placeholder for display
+          const displayContent = (content || "").replace(/\[emoji:[^\]]+\]/g, "😀");
+          const msg = `${discoverer_name}发现了彩蛋\n"${displayContent}"`;
+          if (this.plantEasterEggPopup) {
+            this.plantEasterEggPopup.destroy();
+          }
+          this.plantEasterEggPopup = this.add
+            .text(plantSprite.x, plantSprite.y - 55, msg, {
+              fontSize: "11px",
+              color: "#fff",
+              backgroundColor: "#2d5016cc",
+              padding: { x: 8, y: 6 },
+              fontFamily: "monospace",
+              align: "center",
+              wordWrap: { width: 180 },
+            })
+            .setOrigin(0.5)
+            .setDepth(LABEL_DEPTH);
+          this.plantEasterEggPopupHideAt = this.time.now + 5000;
+        }
+      }) as EventListener);
+
       window.addEventListener("react:afk_changed", ((e: CustomEvent) => {
         const { user_id, is_afk } = e.detail;
         const label = this.nameLabels.get(user_id);
@@ -1591,6 +1876,43 @@ export function createOfficeScene(Phaser: any) {
         const baseName = this.otherPlayerNames.get(user_id) || `User ${user_id}`;
         label.setText(is_afk ? `${baseName} [AFK]` : baseName);
         label.setColor(is_afk ? "#ffa" : "#fff");
+      }) as EventListener);
+
+      window.addEventListener("react:status_changed", ((e: CustomEvent) => {
+        const { user_id, status } = e.detail;
+        const newStatus = (status || "").trim();
+        if (user_id === this.playerConfig.id) {
+          this.playerConfig.status = newStatus;
+          if (this.playerStatusBubble) {
+            this.playerStatusBubble.destroy();
+            this.playerStatusBubble = null;
+          }
+          if (newStatus) {
+            const name = this.playerConfig.display_name || "You";
+            this.playerStatusBubble = this.createStatusBubble(
+              newStatus,
+              name,
+              this.player.x,
+              this.player.y,
+              true
+            );
+          }
+        } else {
+          this.otherPlayerStatus.set(user_id, newStatus);
+          const oldBubble = this.otherPlayerStatusBubbles.get(user_id);
+          if (oldBubble) {
+            oldBubble.destroy();
+            this.otherPlayerStatusBubbles.delete(user_id);
+          }
+          if (newStatus) {
+            const sprite = this.otherPlayers.get(user_id);
+            const name = this.otherPlayerNames.get(user_id) || `User ${user_id}`;
+            if (sprite) {
+              const bubble = this.createStatusBubble(newStatus, name, sprite.x, sprite.y);
+              if (bubble) this.otherPlayerStatusBubbles.set(user_id, bubble);
+            }
+          }
+        }
       }) as EventListener);
     }
 
@@ -1640,6 +1962,16 @@ export function createOfficeScene(Phaser: any) {
         .setOrigin(0.5)
         .setDepth(LABEL_DEPTH);
       this.nameLabels.set(uid, label);
+
+      const statusText = (data.profile?.status || "").trim();
+      if (statusText) {
+        this.otherPlayerStatus.set(uid, statusText);
+        const bubble = this.createStatusBubble(statusText, name, pos.x, pos.y);
+        if (bubble) {
+          this.otherPlayerStatusBubbles.set(uid, bubble);
+          label.setVisible(false);
+        }
+      }
 
       // Pet
       if (
@@ -1833,6 +2165,12 @@ export function createOfficeScene(Phaser: any) {
         label.destroy();
         this.nameLabels.delete(uid);
       }
+      const statusBubble = this.otherPlayerStatusBubbles.get(uid);
+      if (statusBubble) {
+        statusBubble.destroy();
+        this.otherPlayerStatusBubbles.delete(uid);
+      }
+      this.otherPlayerStatus.delete(uid);
       this.otherPlayerNames.delete(uid);
       this.otherPlayerDesk.delete(uid);
       this.otherPlayerSeat.delete(uid);
@@ -2123,7 +2461,6 @@ export function createOfficeScene(Phaser: any) {
           ctx.fillRect(7, 11, 3, 3);
           break;
 
-        case "gecko":
         case "lizard":
           ctx.fillRect(3, 7, 10, 4);
           ctx.fillRect(4, 5, 5, 3);

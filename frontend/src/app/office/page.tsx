@@ -13,6 +13,8 @@ import AnnouncementPanel from "@/components/AnnouncementPanel";
 import AnnouncementNotification, {
   AnnouncementNotificationData,
 } from "@/components/AnnouncementNotification";
+import StatusSetter from "@/components/StatusSetter";
+import EasterEggSetter from "@/components/EasterEggSetter";
 
 // Dynamically import PhaserGame so it only loads client-side
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
@@ -33,6 +35,7 @@ interface UserProfile {
   pet_type: string;
   personality: string;
   is_afk: boolean;
+  status?: string;
 }
 
 export default function OfficePage() {
@@ -51,8 +54,14 @@ export default function OfficePage() {
   const [notification, setNotification] = useState<Notification | null>(null);
   const [showNote, setShowNote] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [showStatusSetter, setShowStatusSetter] = useState(false);
+  const [showEasterEggSetter, setShowEasterEggSetter] = useState(false);
+  const [easterEggPlantId, setEasterEggPlantId] = useState<number | null>(null);
+  const [plantEggs, setPlantEggs] = useState<Record<number, { content: string; hider_user_id: number; hider_display_name: string }>>({});
   const [announcementNotification, setAnnouncementNotification] =
     useState<AnnouncementNotificationData | null>(null);
+  const [unreadSystem, setUnreadSystem] = useState(0);
+  const [unreadPersonal, setUnreadPersonal] = useState(0);
   const latestSystemRef = useRef<string | null>(null);
   const latestPersonalRef = useRef<string | null>(null);
   const wsRef = useRef<ReturnType<typeof getWSClient> | null>(null);
@@ -77,6 +86,42 @@ export default function OfficePage() {
     setShowAnnouncement(true);
     setAnnouncementNotification(null);
   }, []);
+
+  const ANNOUNCEMENT_LAST_READ_KEY = "announcement_last_read";
+
+  const fetchUnreadCount = useCallback(async () => {
+    if (!profile) return;
+    try {
+      const lastSystem = localStorage.getItem(`${ANNOUNCEMENT_LAST_READ_KEY}_system_${profile.id}`);
+      const lastPersonal = localStorage.getItem(`${ANNOUNCEMENT_LAST_READ_KEY}_personal_${profile.id}`);
+      const res = (await api.getAnnouncementUnreadCount(
+        lastSystem || undefined,
+        lastPersonal || undefined
+      )) as { system: number; personal: number };
+      setUnreadSystem(res.system);
+      setUnreadPersonal(res.personal);
+    } catch {
+      /* ignore */
+    }
+  }, [profile]);
+
+  const markAnnouncementReadSystem = useCallback(
+    (latestAt: string) => {
+      if (!profile) return;
+      localStorage.setItem(`${ANNOUNCEMENT_LAST_READ_KEY}_system_${profile.id}`, latestAt);
+      fetchUnreadCount();
+    },
+    [profile, fetchUnreadCount]
+  );
+
+  const markAnnouncementReadPersonal = useCallback(
+    (latestAt: string) => {
+      if (!profile) return;
+      localStorage.setItem(`${ANNOUNCEMENT_LAST_READ_KEY}_personal_${profile.id}`, latestAt);
+      fetchUnreadCount();
+    },
+    [profile, fetchUnreadCount]
+  );
 
   // Load profile
   useEffect(() => {
@@ -159,6 +204,26 @@ export default function OfficePage() {
       window.dispatchEvent(new CustomEvent("react:device_occupied", { detail: data }));
     });
 
+    ws.on("status_changed", (data: any) => {
+      const { user_id, status } = data;
+      setOnlineUsers((prev) => {
+        const key = String(user_id);
+        if (!(key in prev)) return prev;
+        return {
+          ...prev,
+          [key]: {
+            ...prev[key],
+            profile: { ...prev[key].profile, status: status || "" },
+          },
+        };
+      });
+      setProfile((prev) => {
+        if (!prev || prev.id !== user_id) return prev;
+        return { ...prev, status: status || "" };
+      });
+      window.dispatchEvent(new CustomEvent("react:status_changed", { detail: data }));
+    });
+
     ws.on("afk_changed", (data: any) => {
       const { user_id, is_afk } = data;
       setOnlineUsers((prev) => {
@@ -195,14 +260,61 @@ export default function OfficePage() {
       window.dispatchEvent(new CustomEvent("react:seat_state", { detail: data }));
     });
 
+    ws.on("area_activity_notification", (data: any) => {
+      setAnnouncementNotification({
+        id: `area-activity-${Date.now()}`,
+        text: data.text || "",
+      });
+    });
+
+    ws.on("easter_egg_discovered", (data: any) => {
+      window.dispatchEvent(
+        new CustomEvent("react:easter_egg_discovered", {
+          detail: {
+            plant_id: data.plant_id,
+            content: data.content,
+            discoverer_name: data.discoverer_name,
+          },
+        })
+      );
+      setPlantEggs((prev) => {
+        const next = { ...prev };
+        delete next[data.plant_id];
+        return next;
+      });
+      setAnnouncementNotification({
+        id: `easter-egg-${Date.now()}`,
+        text: data.announcement_text || "有人发现了彩蛋！",
+      });
+    });
+
+    ws.on("easter_egg_hidden", (data: any) => {
+      setPlantEggs((prev) => {
+        const next = { ...prev };
+        next[data.plant_id] = {
+          content: data.content,
+          hider_user_id: data.hider_user_id,
+          hider_display_name: data.hider_display_name || `User${data.hider_user_id}`,
+        };
+        window.dispatchEvent(
+          new CustomEvent("react:plant_eggs_update", { detail: { eggs: next } })
+        );
+        return next;
+      });
+    });
+
     ws.on("announcement_updated", (data: any) => {
       const currentProfile = profileRef.current;
       const actorUserId = Number(data.actor_user_id || 0);
       const isFromMe = !!currentProfile && actorUserId === currentProfile.id;
       window.dispatchEvent(new CustomEvent("announcement:refresh", { detail: data }));
+      fetchUnreadCount();
       if (isFromMe) return;
 
       const action = data.action as string;
+      // area_activity: 会议室/用餐区通知已由 area_activity_notification 展示，不重复 toast
+      if (action === "area_activity") return;
+
       const text =
         action === "comment_created"
           ? "有同事发表了新评论"
@@ -226,7 +338,7 @@ export default function OfficePage() {
     return () => {
       destroyWSClient();
     };
-  }, [profile]);
+  }, [profile, fetchUnreadCount]);
 
   useEffect(() => {
     if (!profile) return;
@@ -278,6 +390,33 @@ export default function OfficePage() {
     };
   }, [profile]);
 
+  // Fetch unread count on load, on announcement_updated, and periodically
+  useEffect(() => {
+    if (!profile) return;
+    fetchUnreadCount();
+    const timer = setInterval(fetchUnreadCount, 20000);
+    return () => clearInterval(timer);
+  }, [profile, fetchUnreadCount]);
+
+  // Initialize lastRead from summary on first load (so we don't show all as unread)
+  useEffect(() => {
+    if (!profile) return;
+    const keySystem = `${ANNOUNCEMENT_LAST_READ_KEY}_system_${profile.id}`;
+    const keyPersonal = `${ANNOUNCEMENT_LAST_READ_KEY}_personal_${profile.id}`;
+    if (localStorage.getItem(keySystem) && localStorage.getItem(keyPersonal)) return;
+
+    api.getAnnouncementFeedSummary().then((summary: { latest_system_created_at: string | null; latest_personal_created_at: string | null }) => {
+      const now = new Date().toISOString();
+      if (!localStorage.getItem(keySystem)) {
+        localStorage.setItem(keySystem, summary.latest_system_created_at || now);
+      }
+      if (!localStorage.getItem(keyPersonal)) {
+        localStorage.setItem(keyPersonal, summary.latest_personal_created_at || now);
+      }
+      fetchUnreadCount();
+    }).catch(() => {});
+  }, [profile, fetchUnreadCount]);
+
   useEffect(() => {
     const handleOpenAnnouncement = () => {
       openAnnouncementPanel();
@@ -288,7 +427,28 @@ export default function OfficePage() {
     };
   }, [openAnnouncementPanel]);
 
-  // When game scene is ready, send presence snapshot (users + animals) so it can show everyone
+  // Load plant easter eggs when profile is ready
+  useEffect(() => {
+    if (!profile) return;
+    api.getPlantEasterEggs()
+      .then((res: { eggs: Record<string, any> }) => {
+        const eggs: Record<number, { content: string; hider_user_id: number; hider_display_name: string }> = {};
+        Object.entries(res.eggs || {}).forEach(([k, v]) => {
+          eggs[parseInt(k)] = {
+            content: v.content,
+            hider_user_id: v.hider_user_id,
+            hider_display_name: v.hider_display_name,
+          };
+        });
+        setPlantEggs(eggs);
+        window.dispatchEvent(
+          new CustomEvent("react:plant_eggs_update", { detail: { eggs } })
+        );
+      })
+      .catch(() => {});
+  }, [profile]);
+
+  // When game scene is ready, send presence snapshot and plant eggs
   useEffect(() => {
     let gameReady = false;
     const onGameReady = () => {
@@ -301,6 +461,23 @@ export default function OfficePage() {
           );
         }, 0);
       }
+      // Sync plant eggs to game (fetch fresh in case game mounted before eggs loaded)
+      api.getPlantEasterEggs()
+        .then((res: { eggs: Record<string, any> }) => {
+          const eggs: Record<number, { content: string; hider_user_id: number; hider_display_name: string }> = {};
+          Object.entries(res.eggs || {}).forEach(([k, v]) => {
+            eggs[parseInt(k)] = {
+              content: v.content,
+              hider_user_id: v.hider_user_id,
+              hider_display_name: v.hider_display_name,
+            };
+          });
+          setPlantEggs(eggs);
+          window.dispatchEvent(
+            new CustomEvent("react:plant_eggs_update", { detail: { eggs } })
+          );
+        })
+        .catch(() => {});
     };
     window.addEventListener("game:ready", onGameReady);
     
@@ -361,20 +538,40 @@ export default function OfficePage() {
       wsRef.current?.send({ type: "sit_at_desk", desk_id });
     };
 
+    const handleEditStatus = () => {
+      setShowStatusSetter(true);
+    };
+
+    const handlePlantInteract = (e: Event) => {
+      const { plant_id, has_egg, can_hide } = (e as CustomEvent).detail;
+      if (has_egg) {
+        api.discoverEasterEgg(plant_id).catch((err) => {
+          console.error("Discover easter egg failed:", err);
+        });
+      } else if (can_hide) {
+        setEasterEggPlantId(plant_id);
+        setShowEasterEggSetter(true);
+      }
+    };
+
     window.addEventListener("game:player_moved", handlePlayerMoved);
+    window.addEventListener("game:edit_status", handleEditStatus);
     window.addEventListener("game:nearby_desks", handleNearbyDesks);
     window.addEventListener("game:nearby_users", handleNearbyUsers);
     window.addEventListener("game:seat", handleSeat);
     window.addEventListener("game:stand_up", handleGameStandUp);
     window.addEventListener("game:sit_at_desk", handleSitAtDesk);
+    window.addEventListener("game:plant_interact", handlePlantInteract);
 
     return () => {
       window.removeEventListener("game:player_moved", handlePlayerMoved);
+      window.removeEventListener("game:edit_status", handleEditStatus);
       window.removeEventListener("game:nearby_desks", handleNearbyDesks);
       window.removeEventListener("game:nearby_users", handleNearbyUsers);
       window.removeEventListener("game:seat", handleSeat);
       window.removeEventListener("game:stand_up", handleGameStandUp);
       window.removeEventListener("game:sit_at_desk", handleSitAtDesk);
+      window.removeEventListener("game:plant_interact", handlePlantInteract);
     };
   }, []);
 
@@ -397,6 +594,26 @@ export default function OfficePage() {
     wsRef.current?.send({ type: "sit_at_desk", desk_id: deskId });
     // Wait for desk_state from server before updating UI (avoids flash when desk is occupied)
   }, []);
+
+  const saveStatus = useCallback(
+    async (status: string) => {
+      if (!profile) return;
+      try {
+        await api.updateStatus(status);
+        const newStatus = status || "";
+        setProfile((prev) => (prev ? { ...prev, status: newStatus } : prev));
+        wsRef.current?.send({ type: "set_status", status: newStatus });
+        window.dispatchEvent(
+          new CustomEvent("react:status_changed", {
+            detail: { user_id: profile.id, status: newStatus },
+          })
+        );
+      } catch (e) {
+        console.error("Failed to update status:", e);
+      }
+    },
+    [profile]
+  );
 
   const standUp = useCallback(() => {
     wsRef.current?.send({ type: "stand_up" });
@@ -428,6 +645,20 @@ export default function OfficePage() {
       });
     },
     [chatTarget]
+  );
+
+  const saveEasterEgg = useCallback(
+    async (plantId: number, content: string) => {
+      try {
+        await api.hideEasterEgg(plantId, content);
+        setShowEasterEggSetter(false);
+        setEasterEggPlantId(null);
+        // easter_egg_hidden ws will update plantEggs and dispatch to game
+      } catch (e) {
+        console.error("Hide easter egg failed:", e);
+      }
+    },
+    []
   );
 
   // ---- render ----
@@ -462,10 +693,15 @@ export default function OfficePage() {
             onStandUp={standUp}
           />
           <button
-            className={`pixel-btn text-xs ${showAnnouncement ? "!bg-[var(--pixel-accent)]" : ""}`}
+            className={`pixel-btn text-xs relative overflow-visible ${showAnnouncement ? "!bg-[var(--pixel-accent)]" : ""}`}
             onClick={() => setShowAnnouncement((v) => !v)}
           >
             Announcement
+            {unreadSystem + unreadPersonal > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+                {unreadSystem + unreadPersonal > 99 ? "99+" : unreadSystem + unreadPersonal}
+              </span>
+            )}
           </button>
           <button
             className={`pixel-btn text-xs ${showNote ? "!bg-[var(--pixel-accent)]" : ""}`}
@@ -478,6 +714,12 @@ export default function OfficePage() {
             onClick={() => router.push("/customize/personality")}
           >
             Edit Personality
+          </button>
+          <button
+            className="pixel-btn text-xs"
+            onClick={() => setShowStatusSetter((v) => !v)}
+          >
+            Set Status
           </button>
           <button
             className="pixel-btn text-xs"
@@ -580,7 +822,13 @@ export default function OfficePage() {
 
         {showAnnouncement && (
           <div className="absolute top-4 right-4 z-40">
-            <AnnouncementPanel onClose={() => setShowAnnouncement(false)} />
+            <AnnouncementPanel
+              onClose={() => setShowAnnouncement(false)}
+              unreadSystem={unreadSystem}
+              unreadPersonal={unreadPersonal}
+              onMarkReadSystem={markAnnouncementReadSystem}
+              onMarkReadPersonal={markAnnouncementReadPersonal}
+            />
           </div>
         )}
 
@@ -598,6 +846,29 @@ export default function OfficePage() {
           onClose={() => setAnnouncementNotification(null)}
           onClick={() => openAnnouncementPanel()}
         />
+
+        {showStatusSetter && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
+            <StatusSetter
+              currentStatus={profile?.status || ""}
+              onSave={saveStatus}
+              onClose={() => setShowStatusSetter(false)}
+            />
+          </div>
+        )}
+
+        {showEasterEggSetter && easterEggPlantId !== null && (
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
+            <EasterEggSetter
+              plantId={easterEggPlantId}
+              onSave={(content) => saveEasterEgg(easterEggPlantId, content)}
+              onClose={() => {
+                setShowEasterEggSetter(false);
+                setEasterEggPlantId(null);
+              }}
+            />
+          </div>
+        )}
 
         {/* Online users sidebar */}
         <div className="absolute top-4 left-4 z-10">

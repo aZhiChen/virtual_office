@@ -25,3 +25,6 @@ class User(Base):
 
     # AFK mode
     is_afk = Column(Boolean, default=False)
+
+    # Character status (displayed above head, max 15 chars including emoji)
+    status = Column(String(100), default="")

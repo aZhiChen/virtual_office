@@ -54,6 +54,10 @@ interface CommentItem {
 
 interface Props {
   onClose: () => void;
+  unreadSystem?: number;
+  unreadPersonal?: number;
+  onMarkReadSystem?: (latestAt: string) => void;
+  onMarkReadPersonal?: (latestAt: string) => void;
 }
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -75,7 +79,16 @@ function formatRelativeTime(iso: string | null): string {
   return date.toLocaleString();
 }
 
-export default function AnnouncementPanel({ onClose }: Props) {
+type TabType = "system" | "personal";
+
+export default function AnnouncementPanel({
+  onClose,
+  unreadSystem = 0,
+  unreadPersonal = 0,
+  onMarkReadSystem,
+  onMarkReadPersonal,
+}: Props) {
+  const [activeTab, setActiveTab] = useState<TabType>("system");
   const [feed, setFeed] = useState<FeedData>({ system_messages: [], personal_posts: [] });
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -117,25 +130,48 @@ export default function AnnouncementPanel({ onClose }: Props) {
     };
   }, [loadFeed]);
 
-  const mixedFeed = useMemo(() => {
+  const sortedSystemMessages = useMemo(() => {
     const toMillis = (iso: string | null) => {
       if (!iso) return 0;
       const normalized = /[zZ]|[+\-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`;
       return new Date(normalized).getTime();
     };
-    const rows: Array<
-      | { kind: "system"; item: SystemMessageItem; createdAt: number }
-      | { kind: "personal"; item: PersonalPostItem; createdAt: number }
-    > = [];
-    for (const item of feed.system_messages) {
-      rows.push({ kind: "system", item, createdAt: toMillis(item.created_at) });
+    return [...feed.system_messages].sort(
+      (a, b) => toMillis(b.created_at) - toMillis(a.created_at)
+    );
+  }, [feed.system_messages]);
+
+  const sortedPersonalPosts = useMemo(() => {
+    const toMillis = (iso: string | null) => {
+      if (!iso) return 0;
+      const normalized = /[zZ]|[+\-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`;
+      return new Date(normalized).getTime();
+    };
+    return [...feed.personal_posts].sort(
+      (a, b) => toMillis(b.created_at) - toMillis(a.created_at)
+    );
+  }, [feed.personal_posts]);
+
+  // 3秒后标记已读：系统公告在系统 tab 停留 3 秒后清除；个人公告需点击个人 tab 并停留 3 秒以上才清除
+  useEffect(() => {
+    if (!onMarkReadSystem && !onMarkReadPersonal) return;
+
+    if (activeTab === "system" && onMarkReadSystem && unreadSystem > 0) {
+      const timer = setTimeout(() => {
+        const latest = sortedSystemMessages[0]?.created_at;
+        onMarkReadSystem(latest ? String(latest) : new Date().toISOString());
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-    for (const item of feed.personal_posts) {
-      rows.push({ kind: "personal", item, createdAt: toMillis(item.created_at) });
+
+    if (activeTab === "personal" && onMarkReadPersonal && unreadPersonal > 0) {
+      const timer = setTimeout(() => {
+        const latest = sortedPersonalPosts[0]?.created_at;
+        onMarkReadPersonal(latest ? String(latest) : new Date().toISOString());
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-    rows.sort((a, b) => b.createdAt - a.createdAt);
-    return rows;
-  }, [feed]);
+  }, [activeTab, unreadSystem, unreadPersonal, onMarkReadSystem, onMarkReadPersonal, sortedSystemMessages, sortedPersonalPosts]);
 
   const handleFileChange = async (file: File | null) => {
     if (!file) return;
@@ -235,6 +271,138 @@ export default function AnnouncementPanel({ onClose }: Props) {
     }
   };
 
+  const renderSystemCard = (item: SystemMessageItem) => {
+    const key = makeKey("system", item.id);
+    const comments = commentsMap[key] || [];
+    const commentsOpened = expandedComments.has(key);
+    const created = formatRelativeTime(item.created_at);
+    return (
+      <div key={key} className="rounded border border-gray-700 p-2 bg-gray-800/60 mb-2">
+        <div className="mb-1">
+          <p className="text-[10px] text-yellow-300">📣 系统消息</p>
+          <p className="text-xs text-gray-300">
+            <span className="font-bold">{item.display_name}</span> · {created}
+          </p>
+          <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{item.content}</p>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-gray-300 mt-2">
+          <button
+            className={`${item.liked_by_me ? "text-pink-300" : "text-gray-300"} hover:text-pink-200`}
+            onClick={() => toggleLike("system", item.id, item.liked_by_me)}
+          >
+            {item.liked_by_me ? "♥ 已赞" : "♡ 点赞"} ({item.likes_count})
+          </button>
+          <button className="hover:text-white" onClick={() => toggleComments("system", item.id)}>
+            评论 ({item.comments_count})
+          </button>
+        </div>
+        {commentsOpened && (
+          <div className="mt-2 border-t border-gray-700 pt-2">
+            <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+              {comments.length === 0 && <p className="text-[10px] text-gray-500">还没有评论</p>}
+              {comments.map((c) => (
+                <div key={c.id} className="text-[10px] text-gray-300">
+                  <span className="text-cyan-300">{c.display_name}</span>: {c.content}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-1">
+              <input
+                className="pixel-input flex-1 text-[10px]"
+                value={commentInputMap[key] || ""}
+                onChange={(e) =>
+                  setCommentInputMap((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                placeholder="写评论..."
+              />
+              <button
+                className="pixel-btn text-[10px]"
+                onClick={() => submitComment("system", item.id)}
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPersonalCard = (item: PersonalPostItem) => {
+    const key = makeKey("personal", item.id);
+    const comments = commentsMap[key] || [];
+    const commentsOpened = expandedComments.has(key);
+    const created = formatRelativeTime(item.created_at);
+    return (
+      <div key={key} className="rounded border border-gray-700 p-2 bg-gray-800/60 mb-2">
+        <div className="mb-1">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs text-cyan-300">
+                <span className="font-bold">{item.display_name}</span> · {created}
+              </p>
+            </div>
+            {item.is_mine && (
+              <button
+                className="text-[10px] text-red-400 hover:text-red-300"
+                onClick={() => deletePost(item.id)}
+              >
+                删除
+              </button>
+            )}
+          </div>
+          {item.content && (
+            <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{item.content}</p>
+          )}
+          {item.image_url && (
+            <button className="mt-2 block" onClick={() => setPreviewImage(item.image_url)}>
+              <img src={item.image_url} alt="post" className="max-h-40 rounded border border-gray-600" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-gray-300 mt-2">
+          <button
+            className={`${item.liked_by_me ? "text-pink-300" : "text-gray-300"} hover:text-pink-200`}
+            onClick={() => toggleLike("personal", item.id, item.liked_by_me)}
+          >
+            {item.liked_by_me ? "♥ 已赞" : "♡ 点赞"} ({item.likes_count})
+          </button>
+          <button className="hover:text-white" onClick={() => toggleComments("personal", item.id)}>
+            评论 ({item.comments_count})
+          </button>
+        </div>
+        {commentsOpened && (
+          <div className="mt-2 border-t border-gray-700 pt-2">
+            <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+              {comments.length === 0 && <p className="text-[10px] text-gray-500">还没有评论</p>}
+              {comments.map((c) => (
+                <div key={c.id} className="text-[10px] text-gray-300">
+                  <span className="text-cyan-300">{c.display_name}</span>: {c.content}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-1">
+              <input
+                className="pixel-input flex-1 text-[10px]"
+                value={commentInputMap[key] || ""}
+                onChange={(e) =>
+                  setCommentInputMap((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                placeholder="写评论..."
+              />
+              <button
+                className="pixel-btn text-[10px]"
+                onClick={() => submitComment("personal", item.id)}
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="pixel-panel flex flex-col w-[480px] max-h-[78vh]">
       <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-600">
@@ -244,162 +412,104 @@ export default function AnnouncementPanel({ onClose }: Props) {
         </button>
       </div>
 
-      <div className="mb-3 p-2 rounded border border-gray-600 bg-[var(--pixel-surface)]">
-        <p className="text-xs text-gray-300 mb-1">发布个人动态（最多 500 字）</p>
-        <textarea
-          className="pixel-input w-full text-xs min-h-[72px]"
-          value={content}
-          maxLength={500}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="分享你的进展、心情或今日目标..."
-        />
-        <div className="mt-2 flex items-center gap-2">
-          <label className="pixel-btn text-xs cursor-pointer">
-            上传图片
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/gif"
-              className="hidden"
-              onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-            />
-          </label>
-          <button
-            className="pixel-btn text-xs"
-            onClick={handlePublish}
-            disabled={publishing || (!content.trim() && !imageDataUrl)}
-          >
-            发布
-          </button>
-          {imageName && <span className="text-[10px] text-gray-400 truncate">{imageName}</span>}
-          {imageDataUrl && (
-            <button
-              className="text-[10px] text-red-400 hover:text-red-300"
-              onClick={() => {
-                setImageDataUrl(null);
-                setImageName("");
-              }}
-            >
-              移除图片
-            </button>
+      {/* 导航栏 */}
+      <nav className="flex gap-1 mb-3 border-b border-gray-600 pb-2">
+        <button
+          className={`flex-1 pixel-btn text-xs py-1.5 relative ${
+            activeTab === "system"
+              ? "!bg-yellow-600 !text-yellow-200 !border-yellow-500"
+              : "text-gray-400 hover:text-gray-200"
+          }`}
+          onClick={() => setActiveTab("system")}
+        >
+          📣 系统公告
+          {unreadSystem > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+              {unreadSystem > 99 ? "99+" : unreadSystem}
+            </span>
           )}
-        </div>
-        {error && <p className="mt-1 text-[10px] text-red-400">{error}</p>}
-      </div>
+        </button>
+        <button
+          className={`flex-1 pixel-btn text-xs py-1.5 relative ${
+            activeTab === "personal"
+              ? "!bg-cyan-600 !text-cyan-200 !border-cyan-500"
+              : "text-gray-400 hover:text-gray-200"
+          }`}
+          onClick={() => setActiveTab("personal")}
+        >
+          👤 个人公告
+          {unreadPersonal > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+              {unreadPersonal > 99 ? "99+" : unreadPersonal}
+            </span>
+          )}
+        </button>
+      </nav>
 
-      <div className="flex-1 overflow-y-auto pr-1 space-y-2">
-        {loading && <p className="text-xs text-gray-400">加载中...</p>}
-        {!loading && mixedFeed.length === 0 && (
-          <p className="text-xs text-gray-500 text-center py-10">暂无公告，快发布第一条吧。</p>
+      {/* 内容区 */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {activeTab === "system" && (
+          <div className="flex-1 overflow-y-auto pr-1 space-y-0">
+            {loading && <p className="text-xs text-gray-400">加载中...</p>}
+            {!loading && sortedSystemMessages.length === 0 && (
+              <p className="text-xs text-gray-500 text-center py-10">暂无系统公告</p>
+            )}
+            {!loading && sortedSystemMessages.map((item) => renderSystemCard(item))}
+          </div>
         )}
 
-        {mixedFeed.map((row) => {
-          const key =
-            row.kind === "system"
-              ? makeKey("system", row.item.id)
-              : makeKey("personal", row.item.id);
-          const comments = commentsMap[key] || [];
-          const commentsOpened = expandedComments.has(key);
-          const likedByMe = row.item.liked_by_me;
-          const likesCount = row.item.likes_count;
-          const commentsCount = row.item.comments_count;
-          const created = formatRelativeTime(row.item.created_at);
-
-          return (
-            <div key={`${row.kind}-${row.item.id}`} className="rounded border border-gray-700 p-2 bg-gray-800/60">
-              {row.kind === "system" ? (
-                <div className="mb-1">
-                  <p className="text-[10px] text-yellow-300">📣 系统消息</p>
-                  <p className="text-xs text-gray-300">
-                    <span className="font-bold">{row.item.display_name}</span> · {created}
-                  </p>
-                  <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{row.item.content}</p>
-                </div>
-              ) : (
-                <div className="mb-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xs text-cyan-300">
-                        <span className="font-bold">{row.item.display_name}</span> · {created}
-                      </p>
-                    </div>
-                    {row.item.is_mine && (
-                      <button
-                        className="text-[10px] text-red-400 hover:text-red-300"
-                        onClick={() => deletePost(row.item.id)}
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
-                  {row.item.content && (
-                    <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{row.item.content}</p>
-                  )}
-                  {row.item.image_url && (
-                    <button className="mt-2 block" onClick={() => setPreviewImage(row.item.image_url)}>
-                      <img src={row.item.image_url} alt="post" className="max-h-40 rounded border border-gray-600" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 text-[10px] text-gray-300 mt-2">
+        {activeTab === "personal" && (
+          <>
+            <div className="mb-3 p-2 rounded border border-gray-600 bg-[var(--pixel-surface)] shrink-0">
+              <p className="text-xs text-gray-300 mb-1">发布个人动态（最多 500 字）</p>
+              <textarea
+                className="pixel-input w-full text-xs min-h-[72px]"
+                value={content}
+                maxLength={500}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="分享你的进展、心情或今日目标..."
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <label className="pixel-btn text-xs cursor-pointer">
+                  上传图片
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif"
+                    className="hidden"
+                    onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                  />
+                </label>
                 <button
-                  className={`${likedByMe ? "text-pink-300" : "text-gray-300"} hover:text-pink-200`}
-                  onClick={() =>
-                    toggleLike(
-                      row.kind === "system" ? "system" : "personal",
-                      row.item.id,
-                      likedByMe
-                    )
-                  }
+                  className="pixel-btn text-xs"
+                  onClick={handlePublish}
+                  disabled={publishing || (!content.trim() && !imageDataUrl)}
                 >
-                  {likedByMe ? "♥ 已赞" : "♡ 点赞"} ({likesCount})
+                  发布
                 </button>
-                <button
-                  className="hover:text-white"
-                  onClick={() =>
-                    toggleComments(row.kind === "system" ? "system" : "personal", row.item.id)
-                  }
-                >
-                  评论 ({commentsCount})
-                </button>
+                {imageName && <span className="text-[10px] text-gray-400 truncate">{imageName}</span>}
+                {imageDataUrl && (
+                  <button
+                    className="text-[10px] text-red-400 hover:text-red-300"
+                    onClick={() => {
+                      setImageDataUrl(null);
+                      setImageName("");
+                    }}
+                  >
+                    移除图片
+                  </button>
+                )}
               </div>
-
-              {commentsOpened && (
-                <div className="mt-2 border-t border-gray-700 pt-2">
-                  <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                    {comments.length === 0 && (
-                      <p className="text-[10px] text-gray-500">还没有评论</p>
-                    )}
-                    {comments.map((c) => (
-                      <div key={c.id} className="text-[10px] text-gray-300">
-                        <span className="text-cyan-300">{c.display_name}</span>: {c.content}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex gap-1">
-                    <input
-                      className="pixel-input flex-1 text-[10px]"
-                      value={commentInputMap[key] || ""}
-                      onChange={(e) =>
-                        setCommentInputMap((prev) => ({ ...prev, [key]: e.target.value }))
-                      }
-                      placeholder="写评论..."
-                    />
-                    <button
-                      className="pixel-btn text-[10px]"
-                      onClick={() =>
-                        submitComment(row.kind === "system" ? "system" : "personal", row.item.id)
-                      }
-                    >
-                      发送
-                    </button>
-                  </div>
-                </div>
-              )}
+              {error && <p className="mt-1 text-[10px] text-red-400">{error}</p>}
             </div>
-          );
-        })}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-0">
+              {loading && <p className="text-xs text-gray-400">加载中...</p>}
+              {!loading && sortedPersonalPosts.length === 0 && (
+                <p className="text-xs text-gray-500 text-center py-10">暂无个人公告，快发布第一条吧。</p>
+              )}
+              {!loading && sortedPersonalPosts.map((item) => renderPersonalCard(item))}
+            </div>
+          </>
+        )}
       </div>
 
       {previewImage && (

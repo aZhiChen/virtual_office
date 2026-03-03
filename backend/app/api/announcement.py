@@ -115,6 +115,11 @@ class FeedSummaryResponse(BaseModel):
     latest_personal_created_at: datetime | None = None
 
 
+class UnreadCountResponse(BaseModel):
+    system: int
+    personal: int
+
+
 async def _broadcast_announcement_updated(
     action: str, actor_user_id: int, target_type: TargetType | None = None, target_id: int | None = None
 ) -> None:
@@ -249,6 +254,46 @@ def get_feed_summary(db: Session = Depends(get_db)):
         latest_system_created_at=latest_system,
         latest_personal_created_at=latest_personal,
     )
+
+
+def _parse_iso(s: str) -> datetime | None:
+    if not s or not s.strip():
+        return None
+    s = s.strip().replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+@router.get("/unread-count", response_model=UnreadCountResponse)
+def get_unread_count(
+    last_system_at: str | None = None,
+    last_personal_at: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Count unread announcements. Pass last_system_at/last_personal_at as ISO strings.
+    If omitted, returns 0 (user has not yet read anything, so we treat as initialized)."""
+    system_count = 0
+    personal_count = 0
+
+    if last_system_at:
+        dt = _parse_iso(last_system_at)
+        if dt:
+            system_count = db.query(SystemMessage).filter(SystemMessage.created_at > dt).count()
+        else:
+            system_count = db.query(SystemMessage).count()
+
+    if last_personal_at:
+        dt = _parse_iso(last_personal_at)
+        base_q = db.query(PersonalPost).filter(PersonalPost.user_id != user.id)
+        if dt:
+            personal_count = base_q.filter(PersonalPost.created_at > dt).count()
+        else:
+            personal_count = base_q.count()
+
+    return UnreadCountResponse(system=system_count, personal=personal_count)
 
 
 @router.post("/post", response_model=PersonalPostOut)

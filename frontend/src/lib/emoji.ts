@@ -73,6 +73,16 @@ export function parseEmojiMessage(message: string): string | null {
   return message.slice(EMOJI_PREFIX.length, -EMOJI_SUFFIX.length);
 }
 
+/** Get display length for status limit: each char = 1, each [emoji:xxx] = 1 */
+export function getMixedContentLength(message: string): number {
+  const regex = /\[emoji:([^\]]+)\]/g;
+  let emojiCount = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(message)) !== null) emojiCount++;
+  const textOnly = message.replace(/\[emoji:[^\]]+\]/g, "");
+  return textOnly.length + emojiCount;
+}
+
 /** Parse mixed message (text + emoji) into segments for rendering */
 export function parseMixedMessage(message: string): Array<{ type: "text"; value: string } | { type: "emoji"; filename: string }> {
   const segments: Array<{ type: "text"; value: string } | { type: "emoji"; filename: string }> = [];

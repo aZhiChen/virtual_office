@@ -76,6 +76,24 @@ export interface FurnitureDef {
   scale?: number; // optional display scale (e.g. 1.2)
 }
 
+/** Plant definitions with IDs for easter egg feature (plant_id 0..5) */
+export interface PlantDef {
+  id: number;
+  tileX: number;
+  tileY: number;
+  widthTiles: number;
+  heightTiles: number;
+}
+
+export const PLANT_DEFS: PlantDef[] = [
+  { id: 0, tileX: 2, tileY: 2, widthTiles: 1, heightTiles: 1 },
+  { id: 1, tileX: 37, tileY: 2, widthTiles: 1, heightTiles: 1 },
+  { id: 2, tileX: 2, tileY: 11, widthTiles: 1, heightTiles: 1 },
+  { id: 3, tileX: 37, tileY: 11, widthTiles: 1, heightTiles: 1 },
+  { id: 4, tileX: 19, tileY: 14, widthTiles: 1, heightTiles: 1 },
+  { id: 5, tileX: 18, tileY: 19, widthTiles: 1, heightTiles: 1 },
+];
+
 export const FURNITURE: FurnitureDef[] = [
   // Meeting room – chairs (placed via MEETING_ROOM_CHAIRS array, rendered separately)
   // Meeting room – monitor on top center

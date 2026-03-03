@@ -36,15 +36,6 @@ export const CLOTHING_COLORS = [
 
 /** Pet colours by type (used for UI border; image pets use a default) */
 export const PET_COLORS: Record<string, string> = {
-  cat: "#FFA500",
-  dog: "#C69C6D",
-  snake: "#4CAF50",
-  crab: "#FF5722",
-  rabbit: "#F5F5F5",
-  gecko: "#8BC34A",
-  lizard: "#689F38",
-  turtle: "#607D8B",
-  bird: "#42A5F5",
   // Image-based pets from /img/animals (except cow, horse)
   cat1: "#FFA500",
   cat2: "#DEB887",
@@ -52,4 +43,10 @@ export const PET_COLORS: Record<string, string> = {
   cat4: "#D2691E",
   dog1: "#C69C6D",
   dog2: "#654321",
+  rabbit: "#F5F5F5",
+  lizard: "#689F38",
+  turtle: "#607D8B",
+  bird: "#42A5F5",
+  snake: "#4CAF50",
+  crab: "#FF5722",
 };

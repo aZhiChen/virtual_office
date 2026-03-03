@@ -15,9 +15,9 @@ const HAIR_STYLES = [
 ];
 
 const PET_TYPES = [
-  "cat", "cat1", "cat2", "cat3", "cat4",
-  "dog", "dog1", "dog2",
-  "lizard", "snake", "crab", "rabbit", "gecko", "turtle", "bird",
+  "cat1", "cat2", "cat3", "cat4",
+  "dog1", "dog2",
+  "lizard", "snake", "crab", "rabbit", "turtle", "bird",
 ];
 
 export default function CustomizePage() {
@@ -235,7 +235,7 @@ function ColorRow({
   );
 }
 
-const IMAGE_PET_TYPES = ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard"];
+const IMAGE_PET_TYPES = ["cat1", "cat2", "cat3", "cat4", "dog1", "dog2", "lizard", "crab", "rabbit", "snake", "turtle", "bird"];
 
 function PetPreview({ petType }: { petType: string }) {
   const canvasRef = useState<HTMLCanvasElement | null>(null);
@@ -251,30 +251,6 @@ function PetPreview({ petType }: { petType: string }) {
     ctx.fillStyle = color;
 
     switch (petType) {
-      case "cat":
-        ctx.fillRect(4, 6, 8, 6);
-        ctx.fillRect(5, 2, 6, 5);
-        ctx.fillRect(5, 0, 2, 3);
-        ctx.fillRect(9, 0, 2, 3);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(6, 4, 1, 1);
-        ctx.fillRect(9, 4, 1, 1);
-        ctx.fillStyle = color;
-        ctx.fillRect(5, 12, 2, 4);
-        ctx.fillRect(9, 12, 2, 4);
-        break;
-      case "dog":
-        ctx.fillRect(4, 6, 8, 6);
-        ctx.fillRect(5, 2, 6, 5);
-        ctx.fillRect(4, 2, 2, 5);
-        ctx.fillRect(10, 2, 2, 5);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(6, 4, 1, 1);
-        ctx.fillRect(9, 4, 1, 1);
-        ctx.fillStyle = color;
-        ctx.fillRect(5, 12, 2, 4);
-        ctx.fillRect(9, 12, 2, 4);
-        break;
       default:
         ctx.fillRect(4, 4, 8, 8);
         ctx.fillStyle = "#000";

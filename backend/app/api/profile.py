@@ -38,6 +38,7 @@ class ProfileResponse(BaseModel):
     pet_type: str
     personality: str
     is_afk: bool
+    status: str = ""
 
     model_config = {"from_attributes": True}
 
@@ -57,6 +58,10 @@ class PersonalityUpdateRequest(BaseModel):
 
 class AfkUpdateRequest(BaseModel):
     is_afk: bool
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str = ""
 
 
 class TestPersonalityRequest(BaseModel):
@@ -92,7 +97,7 @@ def update_pet(
     db: Session = Depends(get_db),
 ):
     valid_pets = {
-        "snake", "cat", "dog", "crab", "rabbit", "gecko", "lizard", "turtle", "bird",
+        "snake", "crab", "rabbit", "lizard", "turtle", "bird",
         "cat1", "cat2", "cat3", "cat4", "dog1", "dog2",  # image-based from /img/animals
     }
     if req.has_pet and req.pet_type not in valid_pets:
@@ -127,6 +132,31 @@ def update_afk(
     user.is_afk = req.is_afk
     db.commit()
     logger.info("AFK updated: id=%s is_afk=%s", user.id, user.is_afk)
+    return {"status": "ok"}
+
+
+def _status_display_length(status: str) -> int:
+    """Count display length: each char = 1, each [emoji:xxx] = 1."""
+    import re
+    s = status
+    total = 0
+    for m in re.finditer(r"\[emoji:([^\]]+)\]", s):
+        total += 1
+    s = re.sub(r"\[emoji:[^\]]+\]", "", s)
+    return total + len(s)
+
+
+@router.put("/status")
+def update_status(
+    req: StatusUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if _status_display_length(req.status) > 15:
+        raise HTTPException(status_code=400, detail="Status length must not exceed 15 characters")
+    user.status = (req.status or "")[:200]  # raw string max 200
+    db.commit()
+    logger.info("Status updated: id=%s", user.id)
     return {"status": "ok"}
 
 

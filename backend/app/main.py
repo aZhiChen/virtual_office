@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
-from app.api import announcement, auth, profile, chat, note
+from sqlalchemy import text
+from app.api import announcement, auth, profile, chat, note, easter_egg
 from app.ws import world
 from app.ws.manager import manager
 from app.ws.office_animals import run_office_animals_loop
@@ -14,6 +15,14 @@ from app.services.announcement_service import generate_system_messages
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
+
+# Add status column if missing (for existing DBs)
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN status VARCHAR(100) DEFAULT ''"))
+        conn.commit()
+except Exception:
+    pass  # Column may already exist
 
 
 async def _broadcast_animals(msg: dict) -> None:
@@ -76,6 +85,7 @@ app.include_router(profile.router)
 app.include_router(chat.router)
 app.include_router(note.router)
 app.include_router(announcement.router)
+app.include_router(easter_egg.router)
 app.include_router(world.router)
 
 

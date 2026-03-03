@@ -65,6 +65,12 @@ export const api = {
       body: JSON.stringify({ is_afk }),
     }),
 
+  updateStatus: (status: string) =>
+    apiFetch("/api/profile/status", {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+
   testPersonality: (personality: string, test_message: string) =>
     apiFetch("/api/profile/test-personality", {
       method: "POST",
@@ -116,6 +122,13 @@ export const api = {
   getAnnouncementFeedSummary: () =>
     apiFetch("/api/announcement/feed/summary"),
 
+  getAnnouncementUnreadCount: (lastSystemAt?: string, lastPersonalAt?: string) => {
+    const params = new URLSearchParams();
+    if (lastSystemAt) params.set("last_system_at", lastSystemAt);
+    if (lastPersonalAt) params.set("last_personal_at", lastPersonalAt);
+    return apiFetch(`/api/announcement/unread-count?${params.toString()}`);
+  },
+
   createPersonalPost: (content?: string, image_url?: string) =>
     apiFetch("/api/announcement/post", {
       method: "POST",
@@ -147,4 +160,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ target_type, target_id, content }),
     }),
+
+  // Easter egg (plant)
+  getPlantEasterEggs: () => apiFetch("/api/easter-egg/plants"),
+  hideEasterEgg: (plant_id: number, content: string) =>
+    apiFetch("/api/easter-egg/hide", {
+      method: "POST",
+      body: JSON.stringify({ plant_id, content }),
+    }),
+  discoverEasterEgg: (plant_id: number) =>
+    apiFetch(`/api/easter-egg/discover/${plant_id}`, { method: "POST" }),
 };
