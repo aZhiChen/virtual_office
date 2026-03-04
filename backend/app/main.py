@@ -58,6 +58,9 @@ async def _announcement_scheduler_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Log LLM config at startup (key masked) for debugging
+    key_preview = f"{settings.LLM_API_KEY[:8]}..." if settings.LLM_API_KEY and len(settings.LLM_API_KEY) > 8 else "(not set)"
+    logger.info("LLM config: base_url=%s model=%s api_key=%s", settings.LLM_BASE_URL, settings.LLM_MODEL, key_preview)
     animal_task = asyncio.create_task(run_office_animals_loop(_broadcast_animals))
     announcement_task = asyncio.create_task(_announcement_scheduler_loop())
     yield

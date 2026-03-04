@@ -23,6 +23,13 @@ async def chat_completion(messages: list[dict]) -> str:
                 "temperature": 0.8,
             },
         )
+        if response.status_code != 200:
+            # Log the actual error body for debugging
+            try:
+                err_body = response.json()
+                logger.error(f"LLM API error {response.status_code}: {err_body}")
+            except Exception:
+                logger.error(f"LLM API error {response.status_code}: {response.text[:500]}")
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
@@ -39,9 +46,14 @@ async def generate_afk_reply(
     )
 
     messages = [{"role": "system", "content": system_prompt}]
-    # Append recent conversation history (limited)
-    messages.extend(chat_history[-settings.LLM_MAX_CONTEXT_MESSAGES :])
-    messages.append({"role": "user", "content": incoming_message})
+    # Append recent conversation history (limited), filter out empty content (some APIs reject it)
+    for m in chat_history[-settings.LLM_MAX_CONTEXT_MESSAGES :]:
+        content = (m.get("content") or "").strip()
+        if content:
+            messages.append({"role": m.get("role", "user"), "content": content})
+    # Ensure incoming message is non-empty
+    incoming = (incoming_message or "").strip() or "(无内容)"
+    messages.append({"role": "user", "content": incoming})
 
     try:
         reply = await chat_completion(messages)

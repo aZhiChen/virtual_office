@@ -1,5 +1,11 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from typing import List
+
+# Resolve .env path relative to backend/ (config is at app/core/config.py)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -14,7 +20,7 @@ class Settings(BaseSettings):
     # LLM (OpenAI-compatible)
     LLM_BASE_URL: str = "https://api.zhizengzeng.com/v1"
     LLM_API_KEY: str = "your_key"
-    LLM_MODEL: str = "gpt-5-mini"
+    LLM_MODEL: str = "gpt-4o"
     LLM_TIMEOUT_SECONDS: int = 30
     LLM_MAX_CONTEXT_MESSAGES: int = 10
 
@@ -29,7 +35,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": str(_ENV_FILE) if _ENV_FILE.exists() else ".env",
+        "env_file_encoding": "utf-8",
+    }
 
 
 settings = Settings()
