@@ -1,6 +1,11 @@
 # Virtual Office - Pixel Art Style
 
-A multiplayer virtual office with pixel art aesthetics. Users can customize avatars, adopt pets, chat with colleagues, and let an LLM auto-reply when AFK.
+A multiplayer virtual office with pixel art aesthetics, where users can:
+
+- Customize avatars, adopt pets, chat with colleagues, and let an LLM auto-reply when AFK  
+- Create to-do lists and check off completed items  
+- Post personal announcements on the bulletin board, while the system also shares office updates  
+- Set their status to let others know what they're up to
 
 ## Tech Stack
 
@@ -44,20 +49,33 @@ python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
-
+For Dev:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000 in your browser.
+For Production:
+```bash
+cd frontend
+npm install
+npm run build
+npm run start
+```
+
+Open http://server_ip:3000 in your browser.
 
 ## Features
 
-- Pixel art avatar customization (skin, hair, clothing)
-- Virtual pets (9 types: cat, dog, snake, crab, rabbit, gecko, lizard, turtle, bird)
-- Real-time multiplayer office with WebSocket
-- 12 individual workstations, meeting room, dining area, game room, pet area
-- AFK mode with LLM-powered auto-reply based on personality settings
-- Keyboard-controlled character and pet movement
+A multiplayer virtual office with pixel art aesthetics, offering:
+
+- **Pixel Art Customization** – Customize your avatar's skin, hair, and clothing  
+- **Virtual Pets** – Choose from 9 types: cat, dog, snake, crab, rabbit, gecko, lizard, turtle, and bird  
+- **Real-Time Multiplayer** – Explore the office with WebSocket-powered real-time interaction  
+- **Office Spaces** – Access 12 individual workstations, meeting room, dining area, game room, and pet area  
+- **AFK Mode** – Let an LLM auto-reply based on your personality settings when you're away  
+- **Character & Pet Movement** – Control both your character and pet with keyboard  
+- **To-Do Lists** – Create tasks and check them off when completed  
+- **Bulletin Board** – Post personal announcements and receive system updates about office happenings  
+- **User Status** – Set your status to let others know what you're up to
