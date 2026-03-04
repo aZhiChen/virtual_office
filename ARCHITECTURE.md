@@ -56,8 +56,10 @@
 │                                                          │
 │   ┌──────────────┐   ┌──────────────┐  ┌─────────────┐  │
 │   │  REST API    │   │  WebSocket   │  │  后台任务   │  │
-│   │  /api/auth   │   │  /ws         │  │  动物移动   │  │
-│   │  /api/profile│   │  实时消息    │  │  循环模拟   │  │
+│   │  auth/profile│   │  /ws         │  │  动物移动   │  │
+│   │  chat/note   │   │  实时消息    │  │  公告调度   │  │
+│   │  announcement│   │              │  │             │  │
+│   │  easter_egg  │   │              │  │             │  │
 │   └──────┬───────┘   └──────┬───────┘  └─────────────┘  │
 │          │                  │                            │
 │   ┌──────▼──────────────────▼──────────────────────┐    │
@@ -65,12 +67,15 @@
 │   │   manager.py (连接/状态管理)                    │    │
 │   │   world.py   (消息路由与处理)                   │    │
 │   │   llm_client.py (AI 自动回复)                  │    │
+│   │   announcement_service.py (系统公告/每日统计)   │    │
 │   └──────────────────────┬─────────────────────────┘    │
 │                          │                               │
 │   ┌──────────────────────▼─────────────────────────┐    │
 │   │              数据层                              │    │
 │   │   SQLite 数据库  ← SQLAlchemy ORM               │    │
-│   │   用户表: 账户/头像配置/性格/AFK状态             │    │
+│   │   User/ChatMessage/Note/Task/SystemMessage/     │    │
+│   │   PersonalPost/AnnouncementLike/Comment/       │    │
+│   │   PlantEasterEgg/UserDailyStat                  │    │
 │   └────────────────────────────────────────────────┘    │
 │                          │                               │
 │   ┌──────────────────────▼─────────────────────────┐    │
@@ -163,16 +168,32 @@ db_url = settings.DATABASE_URL
 
 **原则**：这里只描述数据长什么样，不写操作数据的逻辑。
 
+```
+models/
+├── user.py              # User：账户、头像、宠物、性格、AFK、status
+├── chat_message.py      # ChatMessage：私聊消息持久化
+├── note.py              # Note：用户便签
+├── note_item.py         # NoteItem：便签项与 Task 关联
+├── task.py              # Task：待办任务（pending/completed）
+├── system_message.py    # SystemMessage：系统公告
+├── personal_post.py    # PersonalPost：个人帖子
+├── announcement_like.py # AnnouncementLike：点赞
+├── announcement_comment.py # AnnouncementComment：评论
+├── plant_easter_egg.py  # PlantEasterEgg：盆栽彩蛋
+└── user_daily_stat.py   # UserDailyStat：每日统计（便签使用、全部完成）
+```
+
 ```python
-# models/user.py
+# models/user.py 示例
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     hashed_password = Column(String)    # 注意：存哈希，不存明文！
-    avatar_config = Column(JSON)        # 头像配置序列化存储
-    personality = Column(Text)          # AI 性格描述
+    avatar_config = Column(JSON)         # 头像配置序列化存储
+    personality = Column(Text)           # AI 性格描述
     is_afk = Column(Boolean)
+    status = Column(String)              # 头顶状态文案（含 emoji）
 ```
 
 **为什么用 ORM（SQLAlchemy）而不直接写 SQL？**
@@ -185,12 +206,16 @@ class User(Base):
 
 ### `api/` — HTTP 接口层
 
-**原则**：这里处理"不需要实时"的操作——注册、登录、修改头像、设置性格。
+**原则**：这里处理"不需要实时"的操作——注册、登录、修改头像、设置性格、聊天历史、便签、公告、彩蛋。
 
 ```
 api/
-├── auth.py      # POST /api/auth/register, POST /api/auth/login
-└── profile.py   # GET/PUT /api/profile/...
+├── auth.py         # POST /api/auth/register, POST /api/auth/login
+├── profile.py      # GET/PUT /api/profile/...（含 status）
+├── chat.py         # GET /api/chat/history（聊天历史 REST）
+├── note.py         # 便签/任务 CRUD（Note、Task、NoteItem、Box）
+├── announcement.py # 公告墙（系统消息、个人帖子、点赞、评论）
+└── easter_egg.py   # 盆栽彩蛋（藏/发现）
 ```
 
 **什么时候用 REST API，什么时候用 WebSocket？**
@@ -199,9 +224,13 @@ api/
 |------|--------|------|
 | 注册/登录 | REST | 一次性请求，不需要持久连接 |
 | 修改头像 | REST | 低频操作，无需实时 |
+| 聊天历史 | REST | 按需拉取，持久化存储 |
+| 便签/任务 | REST | CRUD 操作，无需实时 |
+| 公告墙 | REST | 读/写帖子、点赞、评论 |
 | 角色移动 | WebSocket | 需要毫秒级实时同步 |
 | 聊天消息 | WebSocket | 需要服务器推送给其他人 |
 | 动物位置 | WebSocket | 每 100ms 更新一次 |
+| 公告更新 | WebSocket | 广播 announcement_updated |
 
 每个接口函数通过 FastAPI 的依赖注入拿到数据库 Session：
 
@@ -250,20 +279,25 @@ world.py           ← 消息路由，决定"这条消息该做什么"
 
 ---
 
-### `services/` — 外部服务层
+### `services/` — 外部服务与业务服务层
 
 ```
 services/
-└── llm_client.py   # 调用 OpenAI 兼容的 LLM API
+├── llm_client.py          # 调用 OpenAI 兼容的 LLM API（AFK 自动回复）
+└── announcement_service.py # 系统公告生成、每日统计刷新
 ```
+
+**`llm_client.py`**：将第三方 LLM 调用隔离在这里，换提供商只改此文件。
+
+**`announcement_service.py`**：
+- `generate_system_messages(db)`：每日 10 点后生成系统公告（连续打卡、任务完成等）。
+- `refresh_user_daily_stat(db, user_id)`：刷新用户每日统计（便签使用、全部完成）。
 
 **为什么单独放 `services/`？**
 
-将第三方服务调用隔离在这里，好处是：
-
-1. 换 LLM 提供商只改这一个文件
+1. 换 LLM 提供商只改 `llm_client.py`
 2. 可以在这里统一处理超时、重试、错误
-3. 方便写单元测试（Mock 这个模块就行）
+3. 方便写单元测试（Mock 这些模块就行）
 
 ---
 
@@ -303,8 +337,8 @@ app/
 
 - 建立 WebSocket 连接
 - 把后端发来的消息转化为游戏事件（通过 `window.dispatchEvent`）
-- 管理 React 状态（在线用户列表、聊天消息、通知）
-- 渲染 UI 层（聊天面板、用户列表、控制按钮）
+- 管理 React 状态（在线用户列表、聊天消息、通知、便签、公告、彩蛋）
+- 渲染 UI 层（聊天面板、用户列表、控制按钮、便签、公告墙、状态设置、彩蛋）
 - 启动 Phaser 游戏
 
 ---
@@ -315,11 +349,16 @@ app/
 
 ```
 components/
-├── PhaserGame.tsx       # 包装 Phaser 游戏实例，处理生命周期
-├── ChatPanel.tsx        # 聊天 UI（消息列表 + 输入框）
-├── PixelAvatar.tsx      # 像素头像预览（Canvas 绘制）
-├── ControlToggle.tsx    # AFK/控制切换按钮
-└── MessageNotification.tsx  # 新消息弹窗通知
+├── PhaserGame.tsx            # 包装 Phaser 游戏实例，处理生命周期
+├── ChatPanel.tsx             # 聊天 UI（消息列表 + 输入框）
+├── PixelAvatar.tsx           # 像素头像预览（Canvas 绘制）
+├── ControlToggle.tsx         # AFK/控制切换按钮
+├── MessageNotification.tsx    # 新消息弹窗通知
+├── NotePanel.tsx             # 便签/任务面板
+├── AnnouncementPanel.tsx      # 公告墙（系统消息 + 个人帖子）
+├── AnnouncementNotification.tsx # 公告更新弹窗
+├── StatusSetter.tsx          # 状态设置（头顶显示文案）
+└── EasterEggSetter.tsx       # 盆栽彩蛋（藏/发现）
 ```
 
 **`PhaserGame.tsx` 解决了一个重要问题**：Phaser 是命令式的（直接操作 DOM），React 是声明式的（描述 UI 状态）。这个组件把两者"粘合"在一起，并在 React 组件销毁时正确清理 Phaser 实例（防止内存泄漏）。
@@ -368,9 +407,10 @@ update() 阶段（每帧执行）：
 
 ```
 lib/
-├── api.ts    # REST API 调用封装
+├── api.ts    # REST API 调用封装（auth/profile/chat/note/announcement/easter_egg）
 ├── ws.ts     # WebSocket 连接管理（单例）
-└── auth.tsx  # 登录状态工具函数
+├── auth.tsx  # 登录状态工具函数
+└── emoji.ts  # 表情符号工具
 ```
 
 **为什么要封装 `api.ts` 和 `ws.ts`？**
@@ -593,10 +633,14 @@ API 层 ← 不依赖 ← 模型层
 | 添加新的头像颜色选项 | `frontend/src/game/sprites/colors.ts` |
 | 添加新的 WebSocket 消息类型 | `backend/app/ws/world.py` + `frontend/src/lib/ws.ts` |
 | 修改 AI 自动回复的风格 | `backend/app/services/llm_client.py`（System Prompt） |
-| 添加新的用户属性（如状态消息） | `backend/app/models/user.py` + 对应 API + 前端展示 |
+| 添加新的用户属性 | `backend/app/models/user.py` + 对应 API + 前端展示 |
 | 修改聊天 UI | `frontend/src/components/ChatPanel.tsx` |
+| 修改便签/任务逻辑 | `backend/app/api/note.py` + `frontend/src/components/NotePanel.tsx` |
+| 修改公告墙逻辑 | `backend/app/api/announcement.py` + `frontend/src/components/AnnouncementPanel.tsx` |
+| 修改彩蛋逻辑 | `backend/app/api/easter_egg.py` + `frontend/src/components/EasterEggSetter.tsx` |
 | 修改角色移动速度/碰撞 | `frontend/src/game/scenes/OfficeScene.ts` |
 | 添加新的家具类型 | `frontend/src/game/maps/officeMap.ts` + `OfficeScene.ts` |
+| 修改系统公告生成规则 | `backend/app/services/announcement_service.py` |
 | 修改数据库配置 | `backend/.env` 文件 |
 | 查看服务器错误日志 | `backend/logs/` 目录 |
 
