@@ -1,27 +1,38 @@
-# Virtual Office - Pixel Art Style
-<img width="1911" height="842" alt="image" src="https://github.com/user-attachments/assets/001e7eb3-5a92-43cb-b2d6-e5607e5eef85" />
-<img width="1920" height="724" alt="image" src="https://github.com/user-attachments/assets/b9effc37-d1e3-423d-8747-3430e2df353b" />
+<p align="center">
+  <img width="76" height="76" alt="virtual_office_logo" src="https://github.com/user-attachments/assets/906ec4e7-eedf-47a8-b487-41bcd915bb65">
+  <img width="180" height="48" alt="virtual" src="https://github.com/user-attachments/assets/8ea5fdd9-7b5e-4d39-8f5e-3b5f83d827c1">
+  <img width="176" height="52" alt="office" src="https://github.com/user-attachments/assets/c58d363d-98d0-44b1-bb29-f885c26f509f">
+</p>
 
+<hr align="center" width="100%">
 
-A multiplayer virtual office with pixel art aesthetics, where users can:
+<h1 align="center">Virtual Office - Pixel Art Style</h1>
 
-- Customize avatars, adopt pets, chat with colleagues, and let an LLM auto-reply when AFK  
-- Create to-do lists and check off completed items  
-- Post personal announcements on the bulletin board, while the system also shares office updates  
-- Set their status to let others know what they're up to
+<!-- 简介部分 -->
+<p style="font-size: 1.2rem; margin: 2rem 0;">
+  A multiplayer virtual office with pixel art aesthetics, where users can:
+</p>
 
-## Tech Stack
+<ul style="list-style-type: none; padding-left: 0; text-align: center; margin-bottom: 2rem;">
+  <li style="margin-bottom: 0.5rem;">✨ Customize avatars, adopt pets, chat with colleagues, and let an LLM auto-reply when AFK</li>
+  <li style="margin-bottom: 0.5rem;">✅ Create to-do lists and check off completed items</li>
+  <li style="margin-bottom: 0.5rem;">📋 Post personal announcements on the bulletin board, while the system also shares office updates</li>
+  <li style="margin-bottom: 0.5rem;">🔵 Set their status to let others know what they're up to</li>
+</ul>
 
-- **Frontend**: Next.js (App Router) + Phaser 3 + Tailwind CSS
-- **Backend**: Python + FastAPI + SQLite + WebSocket
-- **LLM**: OpenAI-compatible API (configurable)
+<h2 >⚙️ Tech Stack</h2>
 
-## Quick Start
+<p >
+  <strong>Frontend:</strong> Next.js (App Router) + Phaser 3 + Tailwind CSS<br>
+  <strong>Backend:</strong> Python + FastAPI + SQLite + WebSocket<br>
+  <strong>LLM:</strong> OpenAI-compatible API (configurable)
+</p>
 
-### Backend (conda)
+<h2>🚀 Quick Start</h2>
 
-```bash
-# Create and activate the conda environment
+<h3>Backend (conda)</h3>
+
+<pre  style="background: #f6f8fa; padding: 1rem; border-radius: 6px; max-width: 800px; margin: 1rem auto; text-align: left;"><code># Create and activate the conda environment
 conda activate virtual_office
 
 # Install Python dependencies
@@ -34,12 +45,11 @@ cp .env.example .env
 
 # Start the backend server
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+</code></pre>
 
-### Backend (venv alternative)
+<h3 >Backend (venv alternative)</h3>
 
-```bash
-cd backend
+<pre style="background: #f6f8fa; padding: 1rem; border-radius: 6px; max-width: 800px; margin: 1rem auto; text-align: left;"><code>cd backend
 python -m venv venv
 # Windows
 venv\Scripts\activate
@@ -49,47 +59,64 @@ source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+</code></pre>
 
-### Frontend
-For Dev:
-```bash
-cd frontend
+<h3 >Frontend</h3>
+
+<p ><strong>For Dev:</strong></p>
+<pre align="center" style="background: #f6f8fa; padding: 1rem; border-radius: 6px; max-width: 800px; margin: 1rem auto; text-align: left;"><code>cd frontend
 npm install
 npm run dev
-```
+</code></pre>
 
-For Production:
-```bash
-cd frontend
+<p ><strong>For Production:</strong></p>
+<pre align="center" style="background: #f6f8fa; padding: 1rem; border-radius: 6px; max-width: 800px; margin: 1rem auto; text-align: left;"><code>cd frontend
 npm install
 npm run build
 npm run start
-```
+</code></pre>
 
-Open http://server_ip:3000 in your browser.
+<p >Open http://server_ip:3000 in your browser.</p>
 
-## Features
+<h2 >📋 Features</h2>
 
-A multiplayer virtual office with pixel art aesthetics, offering:
+<p  style="font-size: 1.1rem; margin-bottom: 2rem;">A multiplayer virtual office with pixel art aesthetics, offering:</p>
 
-- **Pixel Art Customization** – Customize your avatar's skin, hair, and clothing
-- **Virtual Pets** – Choose from 9 types: cat, dog, snake, crab, rabbit, gecko, lizard, turtle, and bird
-- <img width="1031" height="890" alt="image" src="https://github.com/user-attachments/assets/e265154e-760c-4eea-bad1-14140a2d6b7c" />
-- **Real-Time Multiplayer** – Explore the office with WebSocket-powered real-time interaction  
-- **Office Spaces** – Access 12 individual workstations, meeting room, dining area, game room, and pet area  
-- **AFK Mode** – Let an LLM auto-reply based on your personality settings when you're away
-- <img width="332" height="381" alt="image" src="https://github.com/user-attachments/assets/d1eca089-b5ee-40c7-bbd7-c373eda80a55" />
-- **Character & Pet Movement** – Control both your character and pet with keyboard  
-- **To-Do Lists** – Create tasks and check them off when completed
-- <img width="394" height="266" alt="image" src="https://github.com/user-attachments/assets/a5ab446e-894c-4f4b-8cae-a201c308ab08" />
-- <img width="393" height="166" alt="image" src="https://github.com/user-attachments/assets/e9fd13ea-e1ae-44a0-a87f-690d9d06a5df" />
-- <img width="392" height="168" alt="image" src="https://github.com/user-attachments/assets/639b0e52-bff2-48ab-a49e-a556cc08f447" />
-- **Bulletin Board** – Post personal announcements and receive system updates about office happenings
-- <img width="562" height="292" alt="image" src="https://github.com/user-attachments/assets/7446fb36-2f6a-402c-a51f-6646ddee74b8" />
-- <img width="558" height="699" alt="image" src="https://github.com/user-attachments/assets/20828a08-3d04-4508-b90b-21b2cf3eb387" />
-- **User Status** – Set your status to let others know what you're up to
-- <img width="161" height="98" alt="image" src="https://github.com/user-attachments/assets/9406cc56-b742-4716-ae56-c63bd7fa6a57" />
+<!-- 使用表格来组织Features，使图片和文字对齐 -->
+<table align="center" style="margin: 0 auto; max-width: 1000px;">
+  <tr>
+    <td><strong>🎨 Pixel Art Customization</strong><br>Customize your avatar's skin, hair, and clothing<br><br><strong>🐾 Virtual Pets</strong><br>Choose from 9 types: cat, dog, snake, crab, rabbit, gecko, lizard, turtle, and bird<br>
+    </td>
+    <td style="text-align: center;"><br><img width="400" src="https://github.com/user-attachments/assets/e265154e-760c-4eea-bad1-14140a2d6b7c" /></td>
+  </tr>
+  <tr>
+    <td><strong>🌐 Real-Time Multiplayer</strong><br>Explore the office with WebSocket-powered real-time interaction<br><br><strong>🏢 Office Spaces</strong><br>Access 12 individual workstations, meeting room, dining area, game room, and pet area<br><br><strong>🎮 Character & Pet Movement</strong><br>Control both your character and pet with keyboard<br></td>
+    <td><br><img width="400" height="180" alt="image" src="https://github.com/user-attachments/assets/001e7eb3-5a92-43cb-b2d6-e5607e5eef85" />
+  <img width="400" height="180" alt="image" src="https://github.com/user-attachments/assets/b9effc37-d1e3-423d-8747-3430e2df353b" />
+</td>
+  </tr>
+  <tr>  
+    <td><strong>😴 AFK Mode</strong><br>Let an LLM auto-reply based on your personality settings when you're away<br></td>
+    <td><img width="400" src="https://github.com/user-attachments/assets/d1eca089-b5ee-40c7-bbd7-c373eda80a55" /></td>
+  </tr>
+  <tr>
+    <td><strong>✅ To-Do Lists</strong><br>Create tasks and check them off when completed</td>
+    <td>
+      <img width="400" src="https://github.com/user-attachments/assets/a5ab446e-894c-4f4b-8cae-a201c308ab08" /><br>
+      <img width="400" src="https://github.com/user-attachments/assets/639b0e52-bff2-48ab-a49e-a556cc08f447" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>📋 Bulletin Board</strong><br>Post personal announcements and receive system updates about office happenings</td>
+    <td><img width="400" src="https://github.com/user-attachments/assets/20828a08-3d04-4508-b90b-21b2cf3eb387" /></td>
+  </tr>
+  <tr>
+    <td><strong>🔵 User Status</strong><br>Set your status to let others know what you're up to<br></td>
+    <td><img width="400" src="https://github.com/user-attachments/assets/9406cc56-b742-4716-ae56-c63bd7fa6a57" /></td>
+    <td></td>
+  </tr>
+</table>
 
-
-
+<!-- 底部装饰线 -->
+<hr align="center" width="50%">
+<p align="center"><strong>✦ PIXEL PERFECT ✦ MULTIPLAYER ✦ PETS ✦ AFK ✦</strong></p>
