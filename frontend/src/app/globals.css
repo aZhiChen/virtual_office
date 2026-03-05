@@ -23,16 +23,16 @@ body {
   image-rendering: pixelated;
 }
 
-/* Pixel-style button */
+/* Pixel-style button - scales with viewport */
 .pixel-btn {
   font-family: "Courier New", monospace;
-  padding: 8px 16px;
-  border: 3px solid;
+  padding: clamp(4px, 1vw, 8px) clamp(8px, 2vw, 16px);
+  border: clamp(2px, 0.4vw, 3px) solid;
   border-color: #fff #666 #666 #fff;
   background: var(--pixel-primary);
   color: var(--pixel-text);
   cursor: pointer;
-  font-size: 14px;
+  font-size: clamp(10px, 1.4vw, 14px);
   transition: all 0.1s;
 }
 
@@ -44,15 +44,15 @@ body {
   border-color: #666 #fff #fff #666;
 }
 
-/* Pixel-style input */
+/* Pixel-style input - scales with viewport */
 .pixel-input {
   font-family: "Courier New", monospace;
-  padding: 8px 12px;
-  border: 3px solid;
+  padding: clamp(4px, 1vw, 8px) clamp(6px, 1.5vw, 12px);
+  border: clamp(2px, 0.4vw, 3px) solid;
   border-color: #666 #fff #fff #666;
   background: #0a0a1a;
   color: var(--pixel-text);
-  font-size: 14px;
+  font-size: clamp(10px, 1.4vw, 14px);
   outline: none;
 }
 
@@ -66,10 +66,10 @@ body {
   color: var(--pixel-text-dim);
 }
 
-/* Pixel-style panel */
+/* Pixel-style panel - scales with viewport */
 .pixel-panel {
-  border: 3px solid;
+  border: clamp(2px, 0.4vw, 3px) solid;
   border-color: #fff #666 #666 #fff;
   background: var(--pixel-surface);
-  padding: 16px;
+  padding: clamp(8px, 2vw, 16px);
 }

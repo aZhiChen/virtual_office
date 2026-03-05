@@ -673,16 +673,16 @@ export default function OfficePage() {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[var(--pixel-surface)] border-b border-gray-700">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-bold">{profile.display_name}</span>
-          <span className="text-xs text-green-400">Online</span>
-          <span className="text-xs text-gray-500">
+      {/* Top bar - responsive scaling */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-[var(--pixel-surface)] border-b border-gray-700 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <span className="text-xs sm:text-sm font-bold truncate max-w-[120px] sm:max-w-none">{profile.display_name}</span>
+          <span className="text-[10px] sm:text-xs text-green-400">Online</span>
+          <span className="text-[10px] sm:text-xs text-gray-500">
             | {Object.keys(onlineUsers).length + 1} online
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-4 flex-wrap overflow-x-auto min-w-0">
           <ControlToggle
             controlTarget={controlTarget}
             hasPet={profile.has_pet}
@@ -693,42 +693,43 @@ export default function OfficePage() {
             onStandUp={standUp}
           />
           <button
-            className={`pixel-btn text-xs relative overflow-visible ${showAnnouncement ? "!bg-[var(--pixel-accent)]" : ""}`}
+            className={`pixel-btn text-[10px] sm:text-xs relative overflow-visible shrink-0 ${showAnnouncement ? "!bg-[var(--pixel-accent)]" : ""}`}
             onClick={() => setShowAnnouncement((v) => !v)}
           >
-            Announcement
+            <span className="hidden sm:inline">Announcement</span>
+            <span className="sm:hidden">公告</span>
             {unreadSystem + unreadPersonal > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+              <span className="absolute -top-0.5 -right-0.5 sm:-top-1 sm:-right-1 min-w-[14px] h-[14px] sm:min-w-[18px] sm:h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[8px] sm:text-[10px] font-bold px-0.5 sm:px-1">
                 {unreadSystem + unreadPersonal > 99 ? "99+" : unreadSystem + unreadPersonal}
               </span>
             )}
           </button>
           <button
-            className={`pixel-btn text-xs ${showNote ? "!bg-[var(--pixel-accent)]" : ""}`}
+            className={`pixel-btn text-[10px] sm:text-xs shrink-0 ${showNote ? "!bg-[var(--pixel-accent)]" : ""}`}
             onClick={() => setShowNote((v) => !v)}
           >
             Notes
           </button>
           <button
-            className="pixel-btn text-xs"
+            className="pixel-btn text-[10px] sm:text-xs shrink-0 hidden md:inline-flex"
             onClick={() => router.push("/customize/personality")}
           >
             Edit Personality
           </button>
           <button
-            className="pixel-btn text-xs"
+            className="pixel-btn text-[10px] sm:text-xs shrink-0"
             onClick={() => setShowStatusSetter((v) => !v)}
           >
             Set Status
           </button>
           <button
-            className="pixel-btn text-xs"
+            className="pixel-btn text-[10px] sm:text-xs shrink-0"
             onClick={() => router.push("/customize")}
           >
             Edit Avatar
           </button>
           <button
-            className="pixel-btn text-xs !bg-red-900"
+            className="pixel-btn text-[10px] sm:text-xs shrink-0 !bg-red-900"
             onClick={() => {
               localStorage.clear();
               router.push("/login");
@@ -743,15 +744,15 @@ export default function OfficePage() {
       <div className="flex-1 relative overflow-hidden">
         <PhaserGame playerConfig={profile} />
 
-        {/* Floating action buttons */}
-        <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
+        {/* Floating action buttons - responsive */}
+        <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 flex flex-col gap-1.5 sm:gap-2 z-10">
           {/* Desk actions */}
           {nearbyDesks.length > 0 &&
             !isSitting &&
             nearbyDesks.map((deskId) => (
               <button
                 key={`desk-${deskId}`}
-                className="pixel-btn text-xs"
+                className="pixel-btn text-[10px] sm:text-xs"
                 onClick={() => sitAtDesk(deskId)}
               >
                 Sit at Desk #{deskId}
@@ -765,7 +766,7 @@ export default function OfficePage() {
             return (
               <button
                 key={`chat-${uid}`}
-                className="pixel-btn text-xs"
+                className="pixel-btn text-[10px] sm:text-xs"
                 onClick={() => openChat(uid)}
               >
                 Chat with {name}
@@ -775,17 +776,17 @@ export default function OfficePage() {
           })}
         </div>
 
-        {/* Chat panel */}
+        {/* Chat panel - responsive positioning */}
         {chatTarget && (
           <div
-            className={`absolute top-4 z-20 ${
+            className={`absolute top-2 sm:top-4 z-20 right-2 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md ${
               showAnnouncement && showNote
-                ? "right-[920px]"
+                ? "sm:right-[920px]"
                 : showAnnouncement
-                ? "right-[500px]"
+                ? "sm:right-[500px]"
                 : showNote
-                ? "right-[420px]"
-                : "right-4"
+                ? "sm:right-[420px]"
+                : "sm:right-4"
             }`}
           >
             <ChatPanel
@@ -813,15 +814,15 @@ export default function OfficePage() {
           </div>
         )}
 
-        {/* Note panel */}
+        {/* Note panel - responsive */}
         {showNote && (
-          <div className={`absolute top-4 z-30 ${showAnnouncement ? "right-[500px]" : "right-4"}`}>
+          <div className={`absolute top-2 sm:top-4 right-2 sm:right-4 z-30 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md ${showAnnouncement ? "sm:right-[500px]" : ""}`}>
             <NotePanel onClose={() => setShowNote(false)} />
           </div>
         )}
 
         {showAnnouncement && (
-          <div className="absolute top-4 right-4 z-40">
+          <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md">
             <AnnouncementPanel
               onClose={() => setShowAnnouncement(false)}
               unreadSystem={unreadSystem}
@@ -848,7 +849,7 @@ export default function OfficePage() {
         />
 
         {showStatusSetter && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
+          <div className="absolute top-12 sm:top-20 left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-50 max-w-sm sm:max-w-md mx-auto">
             <StatusSetter
               currentStatus={profile?.status || ""}
               onSave={saveStatus}
@@ -858,7 +859,7 @@ export default function OfficePage() {
         )}
 
         {showEasterEggSetter && easterEggPlantId !== null && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
+          <div className="absolute top-12 sm:top-20 left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-50 max-w-sm sm:max-w-md mx-auto">
             <EasterEggSetter
               plantId={easterEggPlantId}
               onSave={(content) => saveEasterEgg(easterEggPlantId, content)}
@@ -870,15 +871,15 @@ export default function OfficePage() {
           </div>
         )}
 
-        {/* Online users sidebar */}
-        <div className="absolute top-4 left-4 z-10">
-          <div className="pixel-panel text-xs opacity-80 max-h-48 overflow-y-auto">
-            <p className="font-bold mb-1">Online ({Object.keys(onlineUsers).length + 1})</p>
-            <p className="text-green-400">
+        {/* Online users sidebar - responsive */}
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-10 max-w-[40vw] sm:max-w-none">
+          <div className="pixel-panel text-[10px] sm:text-xs opacity-80 max-h-32 sm:max-h-48 overflow-y-auto">
+            <p className="font-bold mb-0.5 sm:mb-1">Online ({Object.keys(onlineUsers).length + 1})</p>
+            <p className="text-green-400 truncate">
               {profile.display_name} (you){isAfk ? " [AFK]" : ""}
             </p>
             {Object.entries(onlineUsers).map(([uid, u]: [string, any]) => (
-              <p key={uid} className={u.profile?.is_afk ? "text-yellow-400" : "text-gray-300"}>
+              <p key={uid} className={`truncate ${u.profile?.is_afk ? "text-yellow-400" : "text-gray-300"}`}>
                 {u.profile?.display_name || `User ${uid}`}
                 {u.profile?.is_afk ? " [AFK]" : ""}
               </p>

@@ -70,8 +70,8 @@ export default function PhaserGame({ playerConfig }: PhaserGameProps) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full"
-      style={{ minHeight: "400px" }}
+      className="w-full h-full min-h-0"
+      style={{ minHeight: "240px" }}
     />
   );
 }

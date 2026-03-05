@@ -20,10 +20,10 @@ export default function ControlToggle({
   onStandUp,
 }: Props) {
   return (
-    <div className="flex items-center gap-3 flex-wrap">
+    <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap shrink-0">
       {/* AFK toggle */}
       <button
-        className={`pixel-btn text-xs ${isAfk ? "!bg-yellow-700" : ""}`}
+        className={`pixel-btn text-[10px] sm:text-xs shrink-0 ${isAfk ? "!bg-yellow-700" : ""}`}
         onClick={onToggleAfk}
       >
         {isAfk ? "AFK: ON" : "AFK: OFF"}
@@ -31,14 +31,14 @@ export default function ControlToggle({
 
       {/* Control target toggle */}
       {hasPet && (
-        <button className="pixel-btn text-xs" onClick={onToggleControl}>
+        <button className="pixel-btn text-[10px] sm:text-xs shrink-0" onClick={onToggleControl}>
           Control: {controlTarget === "character" ? "Character" : "Pet"}
         </button>
       )}
 
       {/* Stand up (only when sitting) */}
       {isSitting && (
-        <button className="pixel-btn text-xs !bg-green-800" onClick={onStandUp}>
+        <button className="pixel-btn text-[10px] sm:text-xs shrink-0 !bg-green-800" onClick={onStandUp}>
           Stand Up
         </button>
       )}
