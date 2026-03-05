@@ -7,7 +7,6 @@
 
 <hr align="center" width="100%">
 
-<h1 align="center">Virtual Office - Pixel Art Style</h1>
 
 <!-- 简介部分 -->
 <p style="font-size: 1.2rem; margin: 2rem 0;">
