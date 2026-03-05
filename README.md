@@ -1,8 +1,9 @@
 <p align="center">
   <img width="76" height="76" alt="virtual_office_logo" src="https://github.com/user-attachments/assets/906ec4e7-eedf-47a8-b487-41bcd915bb65">
-  <img width="180" height="48" alt="virtual" src="https://github.com/user-attachments/assets/8ea5fdd9-7b5e-4d39-8f5e-3b5f83d827c1">
+  <img width="180" height="48" alt="virtual" src="https://github.com/user-attachments/assets/007f6ac6-eb4e-4711-911c-62d2adbee144">
   <img width="176" height="52" alt="office" src="https://github.com/user-attachments/assets/c58d363d-98d0-44b1-bb29-f885c26f509f">
 </p>
+
 
 <hr align="center" width="100%">
 
