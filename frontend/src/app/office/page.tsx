@@ -15,6 +15,7 @@ import AnnouncementNotification, {
 } from "@/components/AnnouncementNotification";
 import StatusSetter from "@/components/StatusSetter";
 import EasterEggSetter from "@/components/EasterEggSetter";
+import MobileControlPad from "@/components/MobileControlPad";
 
 // Dynamically import PhaserGame so it only loads client-side
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
@@ -744,8 +745,8 @@ export default function OfficePage() {
       <div className="flex-1 relative overflow-hidden">
         <PhaserGame playerConfig={profile} />
 
-        {/* Floating action buttons - responsive */}
-        <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 flex flex-col gap-1.5 sm:gap-2 z-10">
+        {/* Floating action buttons - above mobile control pad on small screens */}
+        <div className="absolute bottom-56 left-2 md:bottom-4 md:left-4 flex flex-col gap-1.5 sm:gap-2 z-10">
           {/* Desk actions */}
           {nearbyDesks.length > 0 &&
             !isSitting &&
@@ -832,6 +833,9 @@ export default function OfficePage() {
             />
           </div>
         )}
+
+        {/* Mobile virtual controls - D-pad + Space */}
+        <MobileControlPad />
 
         {/* Message notification */}
         <MessageNotification
