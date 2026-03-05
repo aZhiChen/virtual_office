@@ -113,10 +113,6 @@ npm run start
   <tr>
     <td><strong>🔵 User Status</strong><br>Set your status to let others know what you're up to<br></td>
     <td><img width="400" src="https://github.com/user-attachments/assets/9406cc56-b742-4716-ae56-c63bd7fa6a57" /></td>
-    <td></td>
   </tr>
 </table>
 
-<!-- 底部装饰线 -->
-<hr align="center" width="50%">
-<p align="center"><strong>✦ PIXEL PERFECT ✦ MULTIPLAYER ✦ PETS ✦ AFK ✦</strong></p>
