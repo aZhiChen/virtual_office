@@ -1,4 +1,7 @@
 # Virtual Office - Pixel Art Style
+<img width="1911" height="842" alt="image" src="https://github.com/user-attachments/assets/001e7eb3-5a92-43cb-b2d6-e5607e5eef85" />
+<img width="1920" height="724" alt="image" src="https://github.com/user-attachments/assets/b9effc37-d1e3-423d-8747-3430e2df353b" />
+
 
 A multiplayer virtual office with pixel art aesthetics, where users can:
 
@@ -79,3 +82,5 @@ A multiplayer virtual office with pixel art aesthetics, offering:
 - **To-Do Lists** – Create tasks and check them off when completed  
 - **Bulletin Board** – Post personal announcements and receive system updates about office happenings  
 - **User Status** – Set your status to let others know what you're up to
+
+
