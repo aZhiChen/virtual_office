@@ -16,6 +16,7 @@ import AnnouncementNotification, {
 import StatusSetter from "@/components/StatusSetter";
 import EasterEggSetter from "@/components/EasterEggSetter";
 import MobileControlPad from "@/components/MobileControlPad";
+import { useDraggable } from "@/hooks/useDraggable";
 
 // Dynamically import PhaserGame so it only loads client-side
 const PhaserGame = dynamic(() => import("@/components/PhaserGame"), {
@@ -70,6 +71,11 @@ export default function OfficePage() {
   const chatTargetRef = useRef<{ id: number; name: string } | null>(null);
   const onlineUsersRef = useRef<Record<string, any>>({});
   const presenceSnapshotRef = useRef<{ users: Record<string, any>; desks?: Record<string, number>; animals?: any[] }>({ users: {} });
+  const noteDrag = useDraggable();
+  const statusDrag = useDraggable();
+  const chatDrag = useDraggable();
+  const announcementDrag = useDraggable();
+  const easterEggDrag = useDraggable();
 
   useEffect(() => {
     profileRef.current = profile;
@@ -777,7 +783,7 @@ export default function OfficePage() {
           })}
         </div>
 
-        {/* Chat panel - responsive positioning */}
+        {/* Chat panel - responsive positioning, draggable */}
         {chatTarget && (
           <div
             className={`absolute top-2 sm:top-4 z-20 right-2 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md ${
@@ -789,11 +795,13 @@ export default function OfficePage() {
                 ? "sm:right-[420px]"
                 : "sm:right-4"
             }`}
+            style={{ transform: `translate(${chatDrag.delta.x}px, ${chatDrag.delta.y}px)` }}
           >
             <ChatPanel
               targetUserId={chatTarget.id}
               targetUsername={chatTarget.name}
               myUserId={profile.id}
+              onHeaderPointerDown={chatDrag.handlePointerDown}
               messages={(() => {
                 const history = chatHistoryCache[chatTarget.id] ?? [];
                 const live = chatMessages.filter(
@@ -815,21 +823,31 @@ export default function OfficePage() {
           </div>
         )}
 
-        {/* Note panel - responsive */}
+        {/* Note panel - responsive, draggable */}
         {showNote && (
-          <div className={`absolute top-2 sm:top-4 right-2 sm:right-4 z-30 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md ${showAnnouncement ? "sm:right-[500px]" : ""}`}>
-            <NotePanel onClose={() => setShowNote(false)} />
+          <div
+            className={`absolute top-2 sm:top-4 right-2 sm:right-4 z-30 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md ${showAnnouncement ? "sm:right-[500px]" : ""}`}
+            style={{ transform: `translate(${noteDrag.delta.x}px, ${noteDrag.delta.y}px)` }}
+          >
+            <NotePanel
+              onClose={() => setShowNote(false)}
+              onHeaderPointerDown={noteDrag.handlePointerDown}
+            />
           </div>
         )}
 
         {showAnnouncement && (
-          <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md">
+          <div
+            className="absolute top-2 sm:top-4 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] max-w-sm sm:max-w-md"
+            style={{ transform: `translate(${announcementDrag.delta.x}px, ${announcementDrag.delta.y}px)` }}
+          >
             <AnnouncementPanel
               onClose={() => setShowAnnouncement(false)}
               unreadSystem={unreadSystem}
               unreadPersonal={unreadPersonal}
               onMarkReadSystem={markAnnouncementReadSystem}
               onMarkReadPersonal={markAnnouncementReadPersonal}
+              onHeaderPointerDown={announcementDrag.handlePointerDown}
             />
           </div>
         )}
@@ -854,24 +872,30 @@ export default function OfficePage() {
 
         {showStatusSetter && (
           <div className="absolute top-12 sm:top-20 left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-50 max-w-sm sm:max-w-md mx-auto">
-            <StatusSetter
+            <div style={{ transform: `translate(${statusDrag.delta.x}px, ${statusDrag.delta.y}px)` }}>
+              <StatusSetter
               currentStatus={profile?.status || ""}
               onSave={saveStatus}
               onClose={() => setShowStatusSetter(false)}
+              onHeaderPointerDown={statusDrag.handlePointerDown}
             />
+            </div>
           </div>
         )}
 
         {showEasterEggSetter && easterEggPlantId !== null && (
           <div className="absolute top-12 sm:top-20 left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-50 max-w-sm sm:max-w-md mx-auto">
-            <EasterEggSetter
-              plantId={easterEggPlantId}
-              onSave={(content) => saveEasterEgg(easterEggPlantId, content)}
-              onClose={() => {
-                setShowEasterEggSetter(false);
-                setEasterEggPlantId(null);
-              }}
-            />
+            <div style={{ transform: `translate(${easterEggDrag.delta.x}px, ${easterEggDrag.delta.y}px)` }}>
+              <EasterEggSetter
+                plantId={easterEggPlantId}
+                onSave={(content) => saveEasterEgg(easterEggPlantId, content)}
+                onClose={() => {
+                  setShowEasterEggSetter(false);
+                  setEasterEggPlantId(null);
+                }}
+                onHeaderPointerDown={easterEggDrag.handlePointerDown}
+              />
+            </div>
           </div>
         )}
 

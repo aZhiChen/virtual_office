@@ -21,9 +21,10 @@ type Tab = "note" | "pending" | "completed";
 
 interface Props {
   onClose: () => void;
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 }
 
-export default function NotePanel({ onClose }: Props) {
+export default function NotePanel({ onClose, onHeaderPointerDown }: Props) {
   const [tab, setTab] = useState<Tab>("note");
   const [noteItems, setNoteItems] = useState<NoteItemData[]>([]);
   const [pendingTasks, setPendingTasks] = useState<TaskData[]>([]);
@@ -182,10 +183,17 @@ export default function NotePanel({ onClose }: Props) {
 
   return (
     <div className="pixel-panel flex flex-col w-96 max-h-[520px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-600">
+      {/* Header - drag handle when onHeaderPointerDown provided */}
+      <div
+        className={`flex items-center justify-between mb-2 pb-2 border-b border-gray-600 ${onHeaderPointerDown ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
+        onPointerDown={onHeaderPointerDown}
+      >
         <span className="text-sm font-bold">My Notes</span>
-        <button onClick={onClose} className="text-red-400 hover:text-red-300 text-xs">
+        <button
+          onClick={onClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-red-400 hover:text-red-300 text-xs"
+        >
           [X]
         </button>
       </div>

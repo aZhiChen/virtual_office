@@ -13,9 +13,10 @@ interface Props {
   currentStatus: string;
   onSave: (status: string) => void;
   onClose: () => void;
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 }
 
-export default function StatusSetter({ currentStatus, onSave, onClose }: Props) {
+export default function StatusSetter({ currentStatus, onSave, onClose, onHeaderPointerDown }: Props) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [inputVersion, setInputVersion] = useState(0);
   const inputRef = useRef<HTMLDivElement>(null);
@@ -139,9 +140,16 @@ export default function StatusSetter({ currentStatus, onSave, onClose }: Props) 
 
   return (
     <div className="pixel-panel flex flex-col w-80">
-      <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-600">
+      <div
+        className={`flex items-center justify-between mb-2 pb-2 border-b border-gray-600 ${onHeaderPointerDown ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
+        onPointerDown={onHeaderPointerDown}
+      >
         <span className="text-sm font-bold">设置人物状态</span>
-        <button onClick={onClose} className="text-red-400 hover:text-red-300 text-xs">
+        <button
+          onClick={onClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-red-400 hover:text-red-300 text-xs"
+        >
           [X]
         </button>
       </div>

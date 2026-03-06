@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDraggable } from "@/hooks/useDraggable";
 
 export interface AnnouncementNotificationData {
   id: string;
@@ -15,6 +16,7 @@ interface Props {
 
 export default function AnnouncementNotification({ notification, onClose, onClick }: Props) {
   const [visible, setVisible] = useState(false);
+  const { delta, handlePointerDown, movedRef } = useDraggable();
 
   useEffect(() => {
     if (!notification) {
@@ -38,8 +40,16 @@ export default function AnnouncementNotification({ notification, onClose, onClic
       }`}
     >
       <div
-        onClick={onClick}
-        className="pixel-panel cursor-pointer hover:scale-105 transition-transform bg-indigo-900 border-indigo-600 shadow-xl"
+        style={{ transform: `translate(${delta.x}px, ${delta.y}px)` }}
+        onClick={() => {
+          if (movedRef.current) {
+            movedRef.current = false;
+            return;
+          }
+          onClick();
+        }}
+        onPointerDown={handlePointerDown}
+        className="pixel-panel cursor-grab active:cursor-grabbing hover:scale-105 bg-indigo-900 border-indigo-600 shadow-xl touch-none select-none inline-block"
       >
         <div className="flex items-start gap-2 sm:gap-3">
           <div className="flex-shrink-0 text-lg sm:text-2xl">📢</div>
@@ -53,6 +63,7 @@ export default function AnnouncementNotification({ notification, onClose, onClic
               setVisible(false);
               setTimeout(onClose, 300);
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="flex-shrink-0 text-indigo-400 hover:text-indigo-200 text-[10px] sm:text-xs ml-1 sm:ml-2"
           >
             ✕

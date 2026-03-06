@@ -23,6 +23,7 @@ interface Props {
   messages: ChatMessage[];
   onSend: (message: string) => void;
   onClose: () => void;
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 }
 
 export default function ChatPanel({
@@ -31,6 +32,7 @@ export default function ChatPanel({
   messages,
   onSend,
   onClose,
+  onHeaderPointerDown,
 }: Props) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -148,10 +150,17 @@ export default function ChatPanel({
 
   return (
     <div className="pixel-panel flex flex-col w-80 h-96">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-600">
+      {/* Header - drag handle when onHeaderPointerDown provided */}
+      <div
+        className={`flex items-center justify-between mb-2 pb-2 border-b border-gray-600 ${onHeaderPointerDown ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
+        onPointerDown={onHeaderPointerDown}
+      >
         <span className="text-sm font-bold">Chat with {targetUsername}</span>
-        <button onClick={onClose} className="text-red-400 hover:text-red-300 text-xs">
+        <button
+          onClick={onClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-red-400 hover:text-red-300 text-xs"
+        >
           [X]
         </button>
       </div>

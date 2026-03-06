@@ -58,6 +58,7 @@ interface Props {
   unreadPersonal?: number;
   onMarkReadSystem?: (latestAt: string) => void;
   onMarkReadPersonal?: (latestAt: string) => void;
+  onHeaderPointerDown?: (e: React.PointerEvent) => void;
 }
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -87,6 +88,7 @@ export default function AnnouncementPanel({
   unreadPersonal = 0,
   onMarkReadSystem,
   onMarkReadPersonal,
+  onHeaderPointerDown,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>("system");
   const [feed, setFeed] = useState<FeedData>({ system_messages: [], personal_posts: [] });
@@ -405,9 +407,16 @@ export default function AnnouncementPanel({
 
   return (
     <div className="pixel-panel flex flex-col w-[480px] max-h-[78vh]">
-      <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-600">
+      <div
+        className={`flex items-center justify-between mb-2 pb-2 border-b border-gray-600 ${onHeaderPointerDown ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""}`}
+        onPointerDown={onHeaderPointerDown}
+      >
         <span className="text-sm font-bold">公告栏</span>
-        <button onClick={onClose} className="text-red-400 hover:text-red-300 text-xs">
+        <button
+          onClick={onClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-red-400 hover:text-red-300 text-xs"
+        >
           [X]
         </button>
       </div>

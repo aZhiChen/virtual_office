@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDraggable } from "@/hooks/useDraggable";
 
 export interface Notification {
   id: string;
@@ -16,6 +17,7 @@ interface Props {
 
 export default function MessageNotification({ notification, onClose, onClick }: Props) {
   const [visible, setVisible] = useState(false);
+  const { delta, handlePointerDown, movedRef } = useDraggable();
 
   useEffect(() => {
     if (notification) {
@@ -34,6 +36,10 @@ export default function MessageNotification({ notification, onClose, onClick }: 
   if (!notification) return null;
 
   const handleClick = () => {
+    if (movedRef.current) {
+      movedRef.current = false;
+      return;
+    }
     onClick(notification.fromUserId);
     setVisible(false);
     setTimeout(onClose, 300);
@@ -46,8 +52,10 @@ export default function MessageNotification({ notification, onClose, onClick }: 
       }`}
     >
       <div
+        style={{ transform: `translate(${delta.x}px, ${delta.y}px)` }}
         onClick={handleClick}
-        className="pixel-panel cursor-pointer hover:scale-105 transition-transform bg-yellow-900 border-yellow-600 shadow-xl"
+        onPointerDown={handlePointerDown}
+        className="pixel-panel cursor-grab active:cursor-grabbing hover:scale-105 transition-transform bg-yellow-900 border-yellow-600 shadow-xl touch-none inline-block"
       >
         <div className="flex items-start gap-2 sm:gap-3">
           <div className="flex-shrink-0 text-lg sm:text-2xl">💬</div>
