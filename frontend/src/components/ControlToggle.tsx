@@ -20,7 +20,7 @@ export default function ControlToggle({
   onStandUp,
 }: Props) {
   return (
-    <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap shrink-0">
+    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
       {/* AFK toggle */}
       <button
         className={`pixel-btn text-[10px] sm:text-xs shrink-0 ${isAfk ? "!bg-yellow-700" : ""}`}

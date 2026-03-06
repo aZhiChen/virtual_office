@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as date_type, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, and_
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import decode_access_token
@@ -8,6 +9,7 @@ from app.models.note import Note
 from app.models.task import Task
 from app.models.note_item import NoteItem
 from app.services.announcement_service import refresh_user_daily_stat
+from app.services.llm_client import generate_task_summary
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.logger import logger
 
@@ -73,6 +75,16 @@ class ReorderRequest(BaseModel):
 class CompletedGroup(BaseModel):
     date: str
     tasks: list[TaskOut]
+
+class SummaryRequest(BaseModel):
+    dates: list[str]
+    tz_offset_minutes: int = 0
+
+
+class SummaryResponse(BaseModel):
+    dates: list[str]
+    summary: str
+    task_count: int
 
 
 # ── Note endpoints ───────────────────────────────────────
@@ -283,3 +295,63 @@ def get_completed_tasks(
         .all()
     )
     return [TaskOut.model_validate(t) for t in tasks]
+
+
+
+@router.post("/summary", response_model=SummaryResponse)
+async def generate_summary(
+    req: SummaryRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Generate an LLM summary of completed tasks for the selected local dates."""
+    if not req.dates:
+        raise HTTPException(status_code=400, detail="At least one date is required")
+
+    target_dates: list[date_type] = []
+    for d in req.dates:
+        try:
+            target_dates.append(date_type.fromisoformat(d))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid date format: {d}, expected YYYY-MM-DD")
+
+    from sqlalchemy import or_
+    tz_delta = timedelta(minutes=req.tz_offset_minutes)
+    date_filters = []
+    for td in target_dates:
+        local_start = datetime(td.year, td.month, td.day, tzinfo=timezone.utc)
+        utc_start = local_start + tz_delta
+        utc_end = utc_start + timedelta(days=1)
+        date_filters.append(
+            and_(Task.completed_at >= utc_start, Task.completed_at < utc_end)
+        )
+
+    tasks = (
+        db.query(Task)
+        .filter(
+            Task.user_id == user_id,
+            Task.status == "completed",
+            or_(*date_filters),
+        )
+        .order_by(Task.completed_at.asc())
+        .all()
+    )
+    if not tasks:
+        raise HTTPException(status_code=404, detail="No completed tasks found for the selected dates")
+
+    tasks_by_date: dict[str, list[str]] = {}
+    for t in tasks:
+        if t.completed_at:
+            local_dt = t.completed_at - tz_delta
+            d = local_dt.strftime("%Y-%m-%d")
+        else:
+            d = "unknown"
+        tasks_by_date.setdefault(d, []).append(t.content)
+
+    sorted_dates = sorted(tasks_by_date.keys())
+    try:
+        summary = await generate_task_summary(sorted_dates, tasks_by_date)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return SummaryResponse(dates=sorted_dates, summary=summary, task_count=len(tasks))

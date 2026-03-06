@@ -120,6 +120,12 @@ export const api = {
 
   getCompletedBox: () => apiFetch("/api/note/box/completed"),
 
+  generateTaskSummary: (dates: string[], tz_offset_minutes: number) =>
+    apiFetch("/api/note/summary", {
+      method: "POST",
+      body: JSON.stringify({ dates, tz_offset_minutes }),
+    }),
+
   // Announcement
   getAnnouncementFeed: (limit = 20) =>
     apiFetch(`/api/announcement/feed?limit=${limit}`),

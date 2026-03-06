@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
     # LLM (OpenAI-compatible)
+    LLM_BASE_URL: str = "your_base_url"
     LLM_API_KEY: str = "your_key"
     LLM_MODEL: str = "gpt-4o"
     LLM_TIMEOUT_SECONDS: int = 30

@@ -681,15 +681,15 @@ export default function OfficePage() {
   return (
     <div className="h-screen flex flex-col">
       {/* Top bar - responsive scaling */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-[var(--pixel-surface)] border-b border-gray-700 shrink-0">
-        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          <span className="text-xs sm:text-sm font-bold truncate max-w-[120px] sm:max-w-none">{profile.display_name}</span>
-          <span className="text-[10px] sm:text-xs text-green-400">Online</span>
-          <span className="text-[10px] sm:text-xs text-gray-500">
+      <div className="flex items-center justify-between gap-2 px-2 py-1 sm:px-3 sm:py-1.5 bg-[var(--pixel-surface)] border-b border-gray-700 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <span className="text-[10px] sm:text-xs font-bold truncate max-w-[100px] sm:max-w-none">{profile.display_name}</span>
+          <span className="text-[9px] sm:text-[10px] text-green-400">Online</span>
+          <span className="text-[9px] sm:text-[10px] text-gray-500">
             | {Object.keys(onlineUsers).length + 1} online
           </span>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-4 flex-wrap overflow-x-auto min-w-0">
+        <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto min-w-0">
           <ControlToggle
             controlTarget={controlTarget}
             hasPet={profile.has_pet}

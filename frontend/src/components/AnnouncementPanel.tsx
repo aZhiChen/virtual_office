@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 import { api } from "@/lib/api";
 
@@ -285,7 +286,9 @@ export default function AnnouncementPanel({
           <p className="text-xs text-gray-300">
             <span className="font-bold">{item.display_name}</span> · {created}
           </p>
-          <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{item.content}</p>
+          <div className="text-xs text-gray-100 mt-1 announcement-md">
+            <ReactMarkdown>{item.content}</ReactMarkdown>
+          </div>
         </div>
         <div className="flex items-center gap-3 text-[10px] text-gray-300 mt-2">
           <button
@@ -354,7 +357,9 @@ export default function AnnouncementPanel({
             )}
           </div>
           {item.content && (
-            <p className="text-xs text-gray-100 mt-1 whitespace-pre-wrap">{item.content}</p>
+            <div className="text-xs text-gray-100 mt-1 announcement-md">
+              <ReactMarkdown>{item.content}</ReactMarkdown>
+            </div>
           )}
           {item.image_url && (
             <button className="mt-2 block" onClick={() => setPreviewImage(item.image_url)}>
